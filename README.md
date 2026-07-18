@@ -52,15 +52,27 @@
 
 ### 気分フィルター判定(OSM タグ)
 
+`src/core/mood.ts` を参照。
+
 | 気分 | 判定条件 |
 |---|---|
-| 明るい道 | `lit=yes` |
-| 暗い道 | `lit=no` または `lit` なし |
+| 明るい道 | `lit=yes`、**または近くに街灯(`highway=street_lamp`)がある** |
+| 暗い道 | `lit=no`、または(`lit` 未指定 **かつ 近くに街灯が無い**) |
 | 大通り | `highway` ∈ {primary, secondary, trunk} |
 | 住宅街 | `landuse=residential` 内 かつ `highway` ∈ {residential, living_street} |
 | 人の少ない道 | `highway` ∈ {footway, path, pedestrian} |
+| 緑の多い道 | 公園・緑地・並木(`leisure`/`landuse`/`natural`)のそば |
+| 水辺の道 | 河川・水域(`waterway`/`natural=water`)のそば |
+| 舗装路 | `surface` が舗装系、または未指定でも舗装が多い `highway` 種別 |
+| 歩道あり | `sidewalk=yes/both/…`、または歩行者専用路 / `foot=designated` |
+| 細い道 | `service=alley`、`living_street`/`service`/`track`/`steps`、幅員 ≤ 3.5m など |
 
-`landuse=residential` の内外判定はレイキャスティング(点in多角形)で近似しています(`src/core/graph.ts`)。
+**精度改善:** 「明るい/暗い」は `lit` タグが未整備の地域が多いため、街灯ノード
+(`highway=street_lamp`)の位置を併用して判定します。これにより `lit` が無くても街灯が
+地図にあれば「明るい」と判定でき、「暗い道」の過検出も抑えられます。
+
+`landuse=residential` や公園などの内外判定はレイキャスティング(点in多角形)、
+街灯・水辺などの「近さ」判定はグリッド索引(`src/core/spatial.ts`)で高速化しています。
 
 ## セットアップ
 

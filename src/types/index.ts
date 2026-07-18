@@ -12,7 +12,12 @@ export type MoodFilter =
   | 'avenue' // 大通り
   | 'dark' // 暗い道
   | 'residential' // 住宅街
-  | 'quiet'; // 人の少ない道
+  | 'quiet' // 人の少ない道
+  | 'green' // 緑・自然の多い道
+  | 'waterside' // 水辺の道
+  | 'paved' // 舗装された歩きやすい道
+  | 'sidewalk' // 歩道がある安全な道
+  | 'narrow'; // 細い道
 
 export const MOOD_LABELS: Record<MoodFilter, string> = {
   bright: '明るい道',
@@ -20,14 +25,24 @@ export const MOOD_LABELS: Record<MoodFilter, string> = {
   dark: '暗い道',
   residential: '住宅街',
   quiet: '人の少ない道',
+  green: '緑の多い道',
+  waterside: '水辺の道',
+  paved: '舗装路',
+  sidewalk: '歩道あり',
+  narrow: '細い道',
 };
 
 export const ALL_MOODS: MoodFilter[] = [
   'bright',
-  'avenue',
   'dark',
+  'avenue',
   'residential',
   'quiet',
+  'green',
+  'waterside',
+  'paved',
+  'sidewalk',
+  'narrow',
 ];
 
 /** 保存済みルート(履歴の1件)。 */

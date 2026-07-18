@@ -1,8 +1,18 @@
 import createGraph, { type Graph } from 'ngraph.graph';
 import type { LatLng, MoodFilter } from '../types';
-import type { OverpassResponse, OverpassWay } from '../api/overpass';
+import type {
+  OverpassElement,
+  OverpassResponse,
+  OverpassWay,
+} from '../api/overpass';
 import { classifyEdge } from './mood';
 import { haversineMeters } from './geo';
+import {
+  makePolygon,
+  polygonsContain,
+  PointGrid,
+  type PolygonWithBBox,
+} from './spatial';
 
 /** グラフの各リンク(道路セグメント)に付与するメタデータ。 */
 export interface EdgeData {
@@ -21,74 +31,114 @@ export interface RoadGraph {
   nodeCoords: Map<number, LatLng>;
 }
 
-/** 閉じたポリゴン(landuse=residential)内かどうかをレイキャスティングで判定。 */
-function pointInPolygon(pt: LatLng, polygon: LatLng[]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const yi = polygon[i].lat;
-    const xi = polygon[i].lng;
-    const yj = polygon[j].lat;
-    const xj = polygon[j].lng;
-    const intersect =
-      yi > pt.lat !== yj > pt.lat &&
-      pt.lng < ((xj - xi) * (pt.lat - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
+// 近いとみなす距離(メートル)。
+const LAMP_RADIUS_M = 30; // 街灯がこの範囲にあれば「明るい」
+const WATER_RADIUS_M = 45; // 水辺がこの範囲にあれば「水辺の道」
 
-interface PolygonWithBBox {
-  polygon: LatLng[];
-  minLat: number;
-  maxLat: number;
-  minLng: number;
-  maxLng: number;
-}
+const GREEN_LEISURE = new Set([
+  'park',
+  'garden',
+  'nature_reserve',
+  'recreation_ground',
+  'common',
+  'village_green',
+]);
+const GREEN_LANDUSE = new Set([
+  'forest',
+  'grass',
+  'meadow',
+  'recreation_ground',
+  'village_green',
+  'greenfield',
+  'cemetery',
+]);
+const GREEN_NATURAL = new Set(['wood', 'scrub', 'heath', 'grassland']);
+const WATER_WATERWAY = new Set(['river', 'stream', 'canal', 'riverbank']);
 
-function buildResidentialPolygons(
-  ways: OverpassWay[],
-  nodeCoords: Map<number, LatLng>,
-): PolygonWithBBox[] {
-  const polys: PolygonWithBBox[] = [];
-  for (const way of ways) {
-    if (way.tags?.landuse !== 'residential') continue;
-    const coords: LatLng[] = [];
-    for (const nid of way.nodes) {
-      const c = nodeCoords.get(nid);
-      if (c) coords.push(c);
-    }
-    if (coords.length < 3) continue;
-    let minLat = Infinity;
-    let maxLat = -Infinity;
-    let minLng = Infinity;
-    let maxLng = -Infinity;
-    for (const c of coords) {
-      if (c.lat < minLat) minLat = c.lat;
-      if (c.lat > maxLat) maxLat = c.lat;
-      if (c.lng < minLng) minLng = c.lng;
-      if (c.lng > maxLng) maxLng = c.lng;
-    }
-    polys.push({ polygon: coords, minLat, maxLat, minLng, maxLng });
-  }
-  return polys;
-}
-
-function isInResidentialLanduse(
-  pt: LatLng,
-  polys: PolygonWithBBox[],
-): boolean {
-  for (const p of polys) {
-    if (
-      pt.lat < p.minLat ||
-      pt.lat > p.maxLat ||
-      pt.lng < p.minLng ||
-      pt.lng > p.maxLng
-    ) {
-      continue;
-    }
-    if (pointInPolygon(pt, p.polygon)) return true;
-  }
+function isGreenWay(way: OverpassWay): boolean {
+  const t = way.tags;
+  if (!t) return false;
+  if (t.leisure && GREEN_LEISURE.has(t.leisure)) return true;
+  if (t.landuse && GREEN_LANDUSE.has(t.landuse)) return true;
+  if (t.natural && GREEN_NATURAL.has(t.natural)) return true;
   return false;
+}
+
+function isWaterWay(way: OverpassWay): boolean {
+  const t = way.tags;
+  if (!t) return false;
+  if (t.natural === 'water') return true;
+  if (t.waterway && WATER_WATERWAY.has(t.waterway)) return true;
+  return false;
+}
+
+function wayCoords(
+  way: OverpassWay,
+  nodeCoords: Map<number, LatLng>,
+): LatLng[] {
+  const coords: LatLng[] = [];
+  for (const nid of way.nodes) {
+    const c = nodeCoords.get(nid);
+    if (c) coords.push(c);
+  }
+  return coords;
+}
+
+/** 分類に使う周辺データ(住宅街/緑/水辺/街灯)をまとめて構築する。 */
+interface FeatureContext {
+  residentialPolys: PolygonWithBBox[];
+  greenPolys: PolygonWithBBox[];
+  greenLine: PointGrid; // 並木(tree_row)など線状の緑
+  water: PointGrid;
+  lamps: PointGrid;
+}
+
+function buildFeatureContext(
+  ways: OverpassWay[],
+  elements: OverpassElement[],
+  nodeCoords: Map<number, LatLng>,
+  refLat: number,
+): FeatureContext {
+  const residentialPolys: PolygonWithBBox[] = [];
+  const greenPolys: PolygonWithBBox[] = [];
+  const greenLine = new PointGrid(WATER_RADIUS_M, refLat);
+  const water = new PointGrid(WATER_RADIUS_M, refLat);
+  const lamps = new PointGrid(LAMP_RADIUS_M, refLat);
+
+  for (const way of ways) {
+    const t = way.tags;
+    if (!t) continue;
+
+    if (t.landuse === 'residential') {
+      const poly = makePolygon(wayCoords(way, nodeCoords));
+      if (poly) residentialPolys.push(poly);
+    }
+
+    if (isGreenWay(way)) {
+      const coords = wayCoords(way, nodeCoords);
+      const poly = makePolygon(coords);
+      if (poly) greenPolys.push(poly);
+      else for (const c of coords) greenLine.add(c); // 閉じていない緑地は点として扱う
+    }
+
+    // 並木(線状の緑)は点グリッドに入れて「近さ」で判定する。
+    if (t.natural === 'tree_row') {
+      for (const c of wayCoords(way, nodeCoords)) greenLine.add(c);
+    }
+
+    if (isWaterWay(way)) {
+      for (const c of wayCoords(way, nodeCoords)) water.add(c);
+    }
+  }
+
+  // 街灯は独立ノードとして取得される。
+  for (const el of elements) {
+    if (el.type === 'node' && el.tags?.highway === 'street_lamp') {
+      lamps.add({ lat: el.lat, lng: el.lon });
+    }
+  }
+
+  return { residentialPolys, greenPolys, greenLine, water, lamps };
 }
 
 /**
@@ -107,7 +157,12 @@ export function buildGraph(data: OverpassResponse): RoadGraph {
     }
   }
 
-  const residentialPolys = buildResidentialPolygons(ways, nodeCoords);
+  // 経度→メートル換算の基準緯度(取得データの代表点)。
+  const refLat = nodeCoords.size
+    ? [...nodeCoords.values()][0].lat
+    : 35.681236;
+
+  const features = buildFeatureContext(ways, data.elements, nodeCoords, refLat);
 
   const graph = createGraph<NodeData, EdgeData>();
 
@@ -115,7 +170,7 @@ export function buildGraph(data: OverpassResponse): RoadGraph {
     const highway = way.tags?.highway;
     if (!highway) continue; // landuse などの非道路 way は骨組みに使わない
 
-    const lit = way.tags?.lit;
+    const tags = way.tags ?? {};
     const wayId = String(way.id);
 
     for (let i = 1; i < way.nodes.length; i++) {
@@ -136,12 +191,23 @@ export function buildGraph(data: OverpassResponse): RoadGraph {
         lat: (a.lat + b.lat) / 2,
         lng: (a.lng + b.lng) / 2,
       };
-      const inResidentialLanduse = isInResidentialLanduse(
-        mid,
-        residentialPolys,
-      );
 
-      const moods = classifyEdge({ highway, lit, inResidentialLanduse });
+      const moods = classifyEdge({
+        highway,
+        lit: tags.lit,
+        surface: tags.surface,
+        sidewalk: tags.sidewalk,
+        foot: tags.foot,
+        service: tags.service,
+        width: tags.width,
+        lanes: tags.lanes,
+        inResidentialLanduse: polygonsContain(mid, features.residentialPolys),
+        inGreen:
+          polygonsContain(mid, features.greenPolys) ||
+          features.greenLine.hasWithin(mid),
+        nearWater: features.water.hasWithin(mid),
+        nearLamp: features.lamps.hasWithin(mid),
+      });
 
       // 無向グラフとして扱うため、両方向にリンクを張る。
       const edgeData: EdgeData = { wayId, highway, lengthM, moods };
