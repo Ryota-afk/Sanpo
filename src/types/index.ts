@@ -57,6 +57,7 @@ export interface RouteRecord {
   durationMin: number;
   moodFilters: MoodFilter[];
   overlapRateAtSelection: number; // 選択時点の被り率(%)
+  crossings?: [number, number][]; // ルート上の横断歩道の座標 [lat, lng]
 }
 
 /** ユーザー設定(単一レコード)。 */
@@ -78,6 +79,8 @@ export interface RouteCandidate {
   overlapRate: number;
   /** 通過した道タイプの内訳(道タイプ→距離m)。 */
   wayTypeBreakdown: Record<string, number>;
+  /** ルート上の横断歩道の座標 [lat, lng]。 */
+  crossings: [number, number][];
 }
 
 /** ルート提案の結果。 */

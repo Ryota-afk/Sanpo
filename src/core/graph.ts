@@ -29,6 +29,8 @@ export interface RoadGraph {
   graph: Graph<NodeData, EdgeData>;
   /** ノード id -> 座標(最近傍探索・座標復元に使用)。 */
   nodeCoords: Map<number, LatLng>;
+  /** 横断歩道のノード id 集合(ルート上の横断歩道検出に使用)。 */
+  crossings: Set<number>;
 }
 
 // 近いとみなす距離(メートル)。
@@ -148,10 +150,15 @@ function buildFeatureContext(
 export function buildGraph(data: OverpassResponse): RoadGraph {
   const nodeCoords = new Map<number, LatLng>();
   const ways: OverpassWay[] = [];
+  const crossings = new Set<number>();
 
   for (const el of data.elements) {
     if (el.type === 'node') {
       nodeCoords.set(el.id, { lat: el.lat, lng: el.lon });
+      const t = el.tags;
+      if (t && (t.highway === 'crossing' || t.crossing != null)) {
+        crossings.add(el.id);
+      }
     } else if (el.type === 'way') {
       ways.push(el);
     }
@@ -215,7 +222,7 @@ export function buildGraph(data: OverpassResponse): RoadGraph {
     }
   }
 
-  return { graph, nodeCoords };
+  return { graph, nodeCoords, crossings };
 }
 
 /** 座標に最も近いグラフノードの id を返す。ノードが無ければ null。 */

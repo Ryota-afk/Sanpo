@@ -45,6 +45,7 @@ interface RawCandidate {
   wayIds: string[];
   distanceM: number;
   wayTypeBreakdown: Record<string, number>;
+  crossings: [number, number][];
 }
 
 /** リンクのメタデータへ安全にアクセスする。 */
@@ -81,15 +82,24 @@ function buildRawCandidate(
   const edges: RouteEdge[] = [];
   const wayIdSet = new Set<string>();
   const breakdown: Record<string, number> = {};
+  const crossings: [number, number][] = [];
   let distanceM = 0;
+
+  const addCrossingIfAny = (node: Node<NodeData>) => {
+    if (road.crossings.has(node.id as number) && node.data) {
+      crossings.push([node.data.lat, node.data.lng]);
+    }
+  };
 
   const first = nodes[0].data;
   if (first) geometry.push([first.lat, first.lng]);
+  addCrossingIfAny(nodes[0]);
 
   for (let i = 1; i < nodes.length; i++) {
     const link = getEdge(road, nodes[i - 1].id, nodes[i].id);
     const coord = nodes[i].data;
     if (coord) geometry.push([coord.lat, coord.lng]);
+    addCrossingIfAny(nodes[i]);
     if (!link) continue;
     const data = linkData(link);
     distanceM += data.lengthM;
@@ -104,6 +114,7 @@ function buildRawCandidate(
     wayIds: [...wayIdSet],
     distanceM,
     wayTypeBreakdown: breakdown,
+    crossings,
   };
 }
 
@@ -226,6 +237,7 @@ export function proposeRoutes(params: ProposeParams): ProposalResult {
       durationMin,
       overlapRate,
       wayTypeBreakdown: c.wayTypeBreakdown,
+      crossings: c.crossings,
     };
   });
 

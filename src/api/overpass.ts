@@ -27,7 +27,7 @@ export interface OverpassResponse {
 const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
 
 // クエリ内容(取得タグ)を変えたらこの版数を上げる。古いキャッシュを無効化して再取得させる。
-const QUERY_SCHEMA_VERSION = 2;
+const QUERY_SCHEMA_VERSION = 3;
 
 /**
  * バウンディングボックスから安定したキャッシュキーを作る。
@@ -55,6 +55,8 @@ function buildQuery(bbox: BBox): string {
   way["highway"~"^(footway|path|pedestrian|steps|living_street|residential|unclassified|service|tertiary|secondary|primary|trunk|cycleway|track)$"](${b});
   way["landuse"="residential"](${b});
   node["highway"="street_lamp"](${b});
+  node["highway"="crossing"](${b});
+  node["crossing"](${b});
   way["leisure"~"^(park|garden|nature_reserve|recreation_ground|common|village_green)$"](${b});
   way["landuse"~"^(forest|grass|meadow|recreation_ground|village_green|greenfield|cemetery)$"](${b});
   way["natural"~"^(wood|scrub|heath|grassland|tree_row)$"](${b});

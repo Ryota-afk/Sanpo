@@ -37,6 +37,7 @@ export function HomeScreen({ settings, onProposed }: HomeScreenProps) {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
 
   const handleMapClick = (coord: LatLng) => {
     // 1タップ目=スタート、2タップ目=ゴール、3タップ目でリセット。
@@ -46,6 +47,29 @@ export function HomeScreen({ settings, onProposed }: HomeScreenProps) {
     } else {
       setEnd(coord);
     }
+  };
+
+  const useCurrentAsStart = () => {
+    if (!('geolocation' in navigator)) {
+      setError('この端末では現在地を取得できません。');
+      return;
+    }
+    setLocating(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setStart({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setEnd(null);
+        setLocating(false);
+      },
+      () => {
+        setError(
+          '現在地を取得できませんでした。位置情報の利用を許可してください。',
+        );
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
   };
 
   const toggleMood = (m: MoodFilter) => {
@@ -104,6 +128,13 @@ export function HomeScreen({ settings, onProposed }: HomeScreenProps) {
           {start && !end && 'もう一度タップしてゴール地点を指定してください。'}
           {start && end && 'もう一度タップするとスタートから指定し直せます。'}
         </p>
+        <button
+          className="btn btn--secondary"
+          onClick={useCurrentAsStart}
+          disabled={locating}
+        >
+          {locating ? '現在地を取得中…' : '📍 現在地をスタートにする'}
+        </button>
       </div>
 
       <div className="card">

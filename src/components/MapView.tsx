@@ -4,11 +4,14 @@ import {
   TileLayer,
   Marker,
   Polyline,
+  Circle,
   useMap,
   useMapEvents,
 } from 'react-leaflet';
 import L from 'leaflet';
 import type { LatLng } from '../types';
+import type { TurnPoint } from '../core/navigation';
+import { TURN_ARROWS } from '../core/navigation';
 
 /** Leaflet の画像アセット依存を避けるための divIcon マーカー。 */
 function pinIcon(color: string, label: string): L.DivIcon {
@@ -31,6 +34,44 @@ function pinIcon(color: string, label: string): L.DivIcon {
 const START_ICON = pinIcon('#2f855a', 'S');
 const END_ICON = pinIcon('#c53030', 'G');
 
+/** 現在地の青い点。 */
+const LOCATION_ICON = L.divIcon({
+  className: 'sanpo-loc',
+  html: `<div style="
+    width:18px;height:18px;border-radius:50%;
+    background:#3182ce;border:3px solid #fff;
+    box-shadow:0 0 0 2px rgba(49,130,206,0.5), 0 1px 4px rgba(0,0,0,0.4);"></div>`,
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+/** 曲がり角マーカー(矢印)。 */
+function turnIcon(kind: TurnPoint['kind']): L.DivIcon {
+  return L.divIcon({
+    className: 'sanpo-turn',
+    html: `<div style="
+      width:22px;height:22px;border-radius:50%;
+      background:#fff;border:2px solid #dd6b20;color:#dd6b20;
+      display:flex;align-items:center;justify-content:center;
+      font-size:14px;font-weight:700;
+      box-shadow:0 1px 3px rgba(0,0,0,0.3);">${TURN_ARROWS[kind]}</div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+}
+
+/** 横断歩道マーカー。 */
+const CROSSING_ICON = L.divIcon({
+  className: 'sanpo-crossing',
+  html: `<div style="
+    width:20px;height:20px;border-radius:4px;
+    background:#fff;border:2px solid #2b6cb0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;box-shadow:0 1px 3px rgba(0,0,0,0.3);">🚸</div>`,
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
+});
+
 const ROUTE_COLORS = ['#2f855a', '#dd6b20', '#3182ce'];
 
 export interface MapViewProps {
@@ -46,6 +87,16 @@ export interface MapViewProps {
   className?: string;
   /** ルート全体が収まるよう表示範囲を調整する。 */
   fitRoutes?: boolean;
+  /** 現在地(青い点)。 */
+  currentLocation?: LatLng | null;
+  /** 現在地の精度(メートル)。円で表示する。 */
+  accuracyM?: number | null;
+  /** 曲がり角マーカー。 */
+  turns?: TurnPoint[];
+  /** 横断歩道マーカーの座標 [lat, lng]。 */
+  crossings?: [number, number][];
+  /** 「現在地へ」ボタンを表示する。 */
+  showRecenter?: boolean;
 }
 
 function ClickHandler({
@@ -72,6 +123,24 @@ function FitBounds({ routes }: { routes: [number, number][][] }) {
   return null;
 }
 
+/** 地図上に重ねる「現在地へ」ボタン。 */
+function RecenterButton({ target }: { target?: LatLng | null }) {
+  const map = useMap();
+  return (
+    <button
+      type="button"
+      className="map-recenter"
+      onClick={(e) => {
+        e.preventDefault();
+        if (target) map.setView([target.lat, target.lng], 17);
+      }}
+      aria-label="現在地へ移動"
+    >
+      📍 現在地へ
+    </button>
+  );
+}
+
 export function MapView({
   center,
   zoom = 15,
@@ -82,6 +151,11 @@ export function MapView({
   onMapClick,
   className = 'map',
   fitRoutes = false,
+  currentLocation,
+  accuracyM,
+  turns = [],
+  crossings = [],
+  showRecenter = false,
 }: MapViewProps) {
   return (
     <div className={className}>
@@ -109,9 +183,34 @@ export function MapView({
             }}
           />
         ))}
+        {crossings.map((c, i) => (
+          <Marker key={`x${i}`} position={c} icon={CROSSING_ICON} />
+        ))}
+        {turns.map((t, i) => (
+          <Marker key={`t${i}`} position={t.location} icon={turnIcon(t.kind)} />
+        ))}
         {start && <Marker position={[start.lat, start.lng]} icon={START_ICON} />}
         {end && <Marker position={[end.lat, end.lng]} icon={END_ICON} />}
+        {currentLocation && accuracyM != null && accuracyM > 0 && (
+          <Circle
+            center={[currentLocation.lat, currentLocation.lng]}
+            radius={accuracyM}
+            pathOptions={{
+              color: '#3182ce',
+              fillColor: '#3182ce',
+              fillOpacity: 0.12,
+              weight: 1,
+            }}
+          />
+        )}
+        {currentLocation && (
+          <Marker
+            position={[currentLocation.lat, currentLocation.lng]}
+            icon={LOCATION_ICON}
+          />
+        )}
         {fitRoutes && routes.length > 0 && <FitBounds routes={routes} />}
+        {showRecenter && <RecenterButton target={currentLocation} />}
       </MapContainer>
     </div>
   );
