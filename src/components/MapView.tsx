@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -114,9 +114,16 @@ function ClickHandler({
 
 function FitBounds({ routes }: { routes: [number, number][][] }) {
   const map = useMap();
+  // 直近にフィットしたルートの署名。同じルートでは再フィットしない
+  // (現在地更新などの再レンダーでズームが元に戻るのを防ぐ)。
+  const lastSig = useRef<string>('');
   useEffect(() => {
     const pts = routes.flat();
     if (pts.length < 2) return;
+    const last = pts[pts.length - 1];
+    const sig = `${pts.length}:${pts[0][0]},${pts[0][1]}:${last[0]},${last[1]}`;
+    if (sig === lastSig.current) return;
+    lastSig.current = sig;
     const bounds = L.latLngBounds(pts.map(([la, ln]) => L.latLng(la, ln)));
     map.fitBounds(bounds, { padding: [30, 30] });
   }, [map, routes]);

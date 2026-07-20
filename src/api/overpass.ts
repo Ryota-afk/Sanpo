@@ -23,8 +23,19 @@ export interface OverpassResponse {
   elements: OverpassElement[];
 }
 
-// 公開インスタンス。レート制限に配慮し、キャッシュを優先して呼び出しを抑える。
-const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
+// 公開インスタンス(CORS対応のミラー)。混雑や 504/429 のときは順に切り替える。
+// レート制限に配慮し、キャッシュを優先して呼び出しを抑える。
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
+
+// 1リクエストあたりのクライアント側タイムアウト(ミリ秒)。
+// これを過ぎたら中断して次のミラーへ切り替える。
+const REQUEST_TIMEOUT_MS = 30000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // クエリ内容(取得タグ)を変えたらこの版数を上げる。古いキャッシュを無効化して再取得させる。
 const QUERY_SCHEMA_VERSION = 3;
@@ -81,19 +92,58 @@ export async function fetchRoadNetwork(
   }
 
   const query = buildQuery(bbox);
-  const res = await fetch(OVERPASS_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `data=${encodeURIComponent(query)}`,
-  });
-
-  if (!res.ok) {
-    throw new Error(
-      `Overpass API エラー (${res.status})。時間をおいて再試行してください。`,
-    );
-  }
-
-  const json = (await res.json()) as OverpassResponse;
+  const json = await requestWithFallback(query);
   await db.overpassCache.put({ key, json, fetchedAt: Date.now() });
   return json;
+}
+
+/** 一時的な混雑を表すHTTPステータス(次のミラーへ切り替える対象)。 */
+function isRetriable(status: number): boolean {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+/**
+ * 複数のミラーを順に試し、混雑(429/504等)やタイムアウト時は次へフォールバックする。
+ * 各ミラーを2周まで試し、指数バックオフを挟む。
+ */
+async function requestWithFallback(query: string): Promise<OverpassResponse> {
+  const body = `data=${encodeURIComponent(query)}`;
+  let lastError: unknown = null;
+  const totalAttempts = OVERPASS_ENDPOINTS.length * 2;
+
+  for (let attempt = 0; attempt < totalAttempts; attempt++) {
+    const endpoint = OVERPASS_ENDPOINTS[attempt % OVERPASS_ENDPOINTS.length];
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+        signal: controller.signal,
+      });
+
+      if (isRetriable(res.status)) {
+        lastError = new Error(`Overpass 混雑 (${res.status})`);
+        await sleep(500 * 2 ** Math.floor(attempt / OVERPASS_ENDPOINTS.length));
+        continue;
+      }
+      if (!res.ok) {
+        lastError = new Error(`Overpass エラー (${res.status})`);
+        continue;
+      }
+      return (await res.json()) as OverpassResponse;
+    } catch (e) {
+      // タイムアウト(abort)やネットワークエラーは次のミラーへ。
+      lastError = e;
+      await sleep(300);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  throw new Error(
+    '道路データの取得に失敗しました(サーバー混雑の可能性)。少し時間をおいて、もう一度お試しください。' +
+      (lastError instanceof Error ? ` [${lastError.message}]` : ''),
+  );
 }
