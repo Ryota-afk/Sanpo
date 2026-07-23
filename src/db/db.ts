@@ -114,3 +114,58 @@ export async function updatePlace(
 export async function deletePlace(id: number): Promise<void> {
   await db.places.delete(id);
 }
+
+/** 自動採番の id を除いたコピーを返す(取り込み時に id を振り直すため)。 */
+function withoutId<T extends { id?: number }>(o: T): Omit<T, 'id'> {
+  const copy = { ...o };
+  delete copy.id;
+  return copy;
+}
+
+/** バックアップ(書き出し/読み込み)用のデータ形式。 */
+export interface BackupData {
+  app: 'sanpo';
+  version: number;
+  exportedAt: string;
+  settings: Settings | null;
+  routes: RouteRecord[];
+  places: Place[];
+}
+
+/** 履歴・場所・設定をまとめて書き出す。 */
+export async function exportData(): Promise<BackupData> {
+  const [settings, routes, places] = await Promise.all([
+    db.settings.get('user'),
+    db.routes.orderBy('date').toArray(),
+    db.places.orderBy('createdAt').toArray(),
+  ]);
+  return {
+    app: 'sanpo',
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    settings: settings ?? null,
+    routes,
+    places,
+  };
+}
+
+/**
+ * バックアップを読み込む。既存の履歴・場所を置き換える(復元用)。
+ * id は振り直すため、書き出し時の id は無視する。
+ */
+export async function importData(data: BackupData): Promise<void> {
+  if (data.app !== 'sanpo' || !Array.isArray(data.routes)) {
+    throw new Error('このファイルは Sanpo のバックアップではありません。');
+  }
+  await db.transaction('rw', db.routes, db.places, db.settings, async () => {
+    await db.routes.clear();
+    await db.places.clear();
+    await db.routes.bulkAdd(data.routes.map(withoutId));
+    if (Array.isArray(data.places)) {
+      await db.places.bulkAdd(data.places.map(withoutId));
+    }
+    if (data.settings) {
+      await db.settings.put({ ...data.settings, id: 'user' });
+    }
+  });
+}

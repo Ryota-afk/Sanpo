@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { saveSettings } from '../db/db';
+import { useRef, useState } from 'react';
+import { saveSettings, exportData, importData } from '../db/db';
 import type { Settings } from '../types';
 
 export interface SettingsScreenProps {
@@ -20,6 +20,8 @@ export function SettingsScreen({
     current?.defaultOverlapThreshold ?? 30,
   );
   const [saving, setSaving] = useState(false);
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const validPace = pace > 0 && pace <= 60;
 
@@ -29,6 +31,48 @@ export function SettingsScreen({
     await saveSettings(pace, threshold);
     setSaving(false);
     onSaved();
+  };
+
+  const handleExport = async () => {
+    setBackupMsg(null);
+    const data = await exportData();
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `sanpo-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setBackupMsg(
+      `書き出しました(履歴 ${data.routes.length} 件・場所 ${data.places.length} 件)。`,
+    );
+  };
+
+  const handleImportFile = async (file: File) => {
+    setBackupMsg(null);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const routeCount = Array.isArray(data.routes) ? data.routes.length : 0;
+      const placeCount = Array.isArray(data.places) ? data.places.length : 0;
+      const ok = window.confirm(
+        `このバックアップ(履歴 ${routeCount} 件・場所 ${placeCount} 件)で` +
+          '現在のデータを置き換えます。よろしいですか?',
+      );
+      if (!ok) return;
+      await importData(data);
+      setBackupMsg('読み込みました。');
+    } catch (e) {
+      setBackupMsg(
+        e instanceof Error
+          ? `読み込みに失敗しました: ${e.message}`
+          : '読み込みに失敗しました。',
+      );
+    }
   };
 
   return (
@@ -81,6 +125,37 @@ export function SettingsScreen({
       <button className="btn" disabled={!validPace || saving} onClick={handleSave}>
         {saving ? '保存中…' : '保存する'}
       </button>
+
+      {!firstRun && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2>バックアップ</h2>
+          <p className="hint" style={{ marginTop: 0 }}>
+            履歴・場所・設定をファイルに書き出して保存できます。機種変更や、
+            ブラウザにデータを消されたときの復元に使えます。
+          </p>
+          {backupMsg && <div className="notice">{backupMsg}</div>}
+          <button className="btn btn--secondary" onClick={handleExport}>
+            ⬇️ バックアップを書き出す
+          </button>
+          <button
+            className="btn btn--secondary"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            ⬆️ バックアップを読み込む
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handleImportFile(f);
+              e.target.value = '';
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
