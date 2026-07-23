@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { RouteRecord, Settings } from '../types';
+import type { Place, RouteRecord, Settings } from '../types';
 
 /** Overpass 取得結果のキャッシュエントリ。 */
 export interface OverpassCacheEntry {
@@ -20,6 +20,7 @@ class SanpoDB extends Dexie {
   routes!: Table<RouteRecord, number>;
   settings!: Table<Settings, string>;
   overpassCache!: Table<OverpassCacheEntry, string>;
+  places!: Table<Place, number>;
 
   constructor() {
     super('sanpo-db');
@@ -27,6 +28,10 @@ class SanpoDB extends Dexie {
       routes: '++id, date',
       settings: 'id',
       overpassCache: 'key, fetchedAt',
+    });
+    // v2: 場所登録テーブルを追加(既存テーブルはそのまま引き継がれる)。
+    this.version(2).stores({
+      places: '++id, name, createdAt',
     });
   }
 }
@@ -78,4 +83,34 @@ export async function saveRoute(record: RouteRecord): Promise<number> {
 /** ルートを削除する。 */
 export async function deleteRoute(id: number): Promise<void> {
   await db.routes.delete(id);
+}
+
+/** 登録した場所を作成順(古い順)で取得する。 */
+export async function getPlaces(): Promise<Place[]> {
+  return db.places.orderBy('createdAt').toArray();
+}
+
+/** 場所を追加する。 */
+export async function addPlace(
+  name: string,
+  coord: { lat: number; lng: number },
+): Promise<number> {
+  return db.places.add({
+    name,
+    coord,
+    createdAt: new Date().toISOString(),
+  });
+}
+
+/** 場所の名前・座標を更新する。 */
+export async function updatePlace(
+  id: number,
+  changes: Partial<Pick<Place, 'name' | 'coord'>>,
+): Promise<void> {
+  await db.places.update(id, changes);
+}
+
+/** 場所を削除する。 */
+export async function deletePlace(id: number): Promise<void> {
+  await db.places.delete(id);
 }

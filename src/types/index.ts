@@ -60,6 +60,14 @@ export interface RouteRecord {
   crossings?: [number, number][]; // ルート上の横断歩道の座標 [lat, lng]
 }
 
+/** 登録した場所(自宅・バイト先など)。 */
+export interface Place {
+  id?: number;
+  name: string;
+  coord: LatLng;
+  createdAt: string; // ISO8601
+}
+
 /** ユーザー設定(単一レコード)。 */
 export interface Settings {
   id: 'user';

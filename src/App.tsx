@@ -4,6 +4,7 @@ import { HomeScreen } from './screens/HomeScreen';
 import { CandidatesScreen } from './screens/CandidatesScreen';
 import { DetailScreen } from './screens/DetailScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
+import { PlacesScreen } from './screens/PlacesScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import type {
   LatLng,
@@ -12,7 +13,13 @@ import type {
   RouteCandidate,
 } from './types';
 
-type Screen = 'home' | 'candidates' | 'detail' | 'history' | 'settings';
+type Screen =
+  | 'home'
+  | 'candidates'
+  | 'detail'
+  | 'history'
+  | 'places'
+  | 'settings';
 
 interface ProposalContext {
   start: LatLng;
@@ -27,6 +34,7 @@ const HEADER_TITLES: Record<Screen, string> = {
   candidates: '候補ルート',
   detail: 'ルート詳細',
   history: '履歴',
+  places: '場所',
   settings: '設定',
 };
 
@@ -112,6 +120,8 @@ export function App() {
 
         {screen === 'history' && <HistoryScreen />}
 
+        {screen === 'places' && <PlacesScreen />}
+
         {screen === 'settings' && (
           <SettingsScreen
             current={settings}
@@ -144,6 +154,13 @@ export function App() {
         >
           <span className="nav-icon">📖</span>
           履歴
+        </button>
+        <button
+          className={screen === 'places' ? 'active' : ''}
+          onClick={() => setScreen('places')}
+        >
+          <span className="nav-icon">📍</span>
+          場所
         </button>
         <button
           className={screen === 'settings' ? 'active' : ''}

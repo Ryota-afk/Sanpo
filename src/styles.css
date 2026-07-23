@@ -422,3 +422,37 @@ input[type='range'] {
 .step__text b {
   font-size: 16px;
 }
+
+.place-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.place-item:last-child {
+  border-bottom: none;
+}
+
+.place-item__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.place-item__name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.place-item__coord {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.place-item .btn {
+  width: auto;
+  padding: 6px 12px;
+  font-size: 13px;
+  margin-top: 0;
+}

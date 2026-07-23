@@ -1,13 +1,16 @@
 import { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { MapView } from '../components/MapView';
 import {
   ALL_MOODS,
   MOOD_LABELS,
   type LatLng,
   type MoodFilter,
+  type Place,
   type Settings,
 } from '../types';
 import { proposeFromCoords } from '../core/proposalService';
+import { db } from '../db/db';
 import type { ProposalResult } from '../types';
 
 // 初期地図中心(東京駅)。位置が未指定のときの表示用。
@@ -38,6 +41,20 @@ export function HomeScreen({ settings, onProposed }: HomeScreenProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+
+  const places = useLiveQuery(
+    () => db.places.orderBy('createdAt').toArray(),
+    [],
+  );
+
+  // 同じ座標か(登録場所チップの選択中ハイライト用)。
+  const sameCoord = (a: LatLng | null, b: LatLng): boolean =>
+    a != null && a.lat === b.lat && a.lng === b.lng;
+
+  const swapStartEnd = () => {
+    setStart(end);
+    setEnd(start);
+  };
 
   const handleMapClick = (coord: LatLng) => {
     // 1タップ目=スタート、2タップ目=ゴール、3タップ目でリセット。
@@ -135,6 +152,58 @@ export function HomeScreen({ settings, onProposed }: HomeScreenProps) {
         >
           {locating ? '現在地を取得中…' : '📍 現在地をスタートにする'}
         </button>
+      </div>
+
+      <div className="card">
+        <h2>登録した場所から選ぶ</h2>
+        {places == null || places.length === 0 ? (
+          <p className="hint">
+            「場所」タブで自宅・バイト先などを登録すると、ここからワンタップで
+            スタート/ゴールに設定できます。
+          </p>
+        ) : (
+          <>
+            <div className="field">
+              <label>スタート</label>
+              <div className="mood-grid">
+                {places.map((p: Place) => (
+                  <div
+                    key={`s${p.id}`}
+                    className={`chip ${sameCoord(start, p.coord) ? 'selected' : ''}`}
+                    onClick={() => setStart(p.coord)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    📍 {p.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="field">
+              <label>ゴール</label>
+              <div className="mood-grid">
+                {places.map((p: Place) => (
+                  <div
+                    key={`g${p.id}`}
+                    className={`chip ${sameCoord(end, p.coord) ? 'selected' : ''}`}
+                    onClick={() => setEnd(p.coord)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    📍 {p.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <button
+              className="btn btn--secondary"
+              onClick={swapStartEnd}
+              disabled={!start && !end}
+            >
+              ⇅ スタートとゴールを入れ替え
+            </button>
+          </>
+        )}
       </div>
 
       <div className="card">
