@@ -6,11 +6,14 @@ import { DetailScreen } from './screens/DetailScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
 import { PlacesScreen } from './screens/PlacesScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+import { saveRoute } from './db/db';
+import { routeRecordToCandidate } from './core/routeRecord';
 import type {
   LatLng,
   MoodFilter,
   ProposalResult,
   RouteCandidate,
+  RouteRecord,
 } from './types';
 
 type Screen =
@@ -29,6 +32,13 @@ interface ProposalContext {
   overlapThreshold: number;
 }
 
+/** DetailScreen の表示に必要な最小限の文脈。 */
+interface DetailContext {
+  start: LatLng;
+  end: LatLng;
+  moods: MoodFilter[];
+}
+
 const HEADER_TITLES: Record<Screen, string> = {
   home: '🚶 Sanpo — ルート提案',
   candidates: '候補ルート',
@@ -44,6 +54,9 @@ export function App() {
   const [result, setResult] = useState<ProposalResult | null>(null);
   const [context, setContext] = useState<ProposalContext | null>(null);
   const [selected, setSelected] = useState<RouteCandidate | null>(null);
+  const [routeId, setRouteId] = useState<number | null>(null);
+  const [detailCtx, setDetailCtx] = useState<DetailContext | null>(null);
+  const [cameFromHistory, setCameFromHistory] = useState(false);
 
   // 設定読込中。
   if (settings === undefined) {
@@ -66,25 +79,62 @@ export function App() {
     );
   }
 
-  const handleProposed = (
-    r: ProposalResult,
-    ctx: ProposalContext,
-  ) => {
+  const handleProposed = (r: ProposalResult, ctx: ProposalContext) => {
     setResult(r);
     setContext(ctx);
     setSelected(null);
+    setRouteId(null);
+    setDetailCtx(null);
     setScreen('candidates');
   };
 
-  const handleSelect = (c: RouteCandidate) => {
-    setSelected(c);
+  // 候補を選んだ瞬間に「進行中」として保存する。
+  // これでブラウザを閉じても履歴タブから続きを確認・再開できる。
+  const handleSelect = async (candidate: RouteCandidate) => {
+    if (!context) return;
+    const record: RouteRecord = {
+      date: new Date().toISOString(),
+      status: 'in_progress',
+      startCoord: context.start,
+      endCoord: context.end,
+      wayIds: candidate.wayIds,
+      geometry: candidate.geometry,
+      distanceM: candidate.distanceM,
+      durationMin: candidate.durationMin,
+      moodFilters: context.moods,
+      overlapRateAtSelection: candidate.overlapRate,
+      crossings: candidate.crossings,
+      wayTypeBreakdown: candidate.wayTypeBreakdown,
+    };
+    const id = await saveRoute(record);
+    setSelected(candidate);
+    setRouteId(id);
+    setDetailCtx({ start: context.start, end: context.end, moods: context.moods });
+    setCameFromHistory(false);
     setScreen('detail');
   };
 
-  const handleSaved = () => {
+  // 履歴タブの「続ける」: 保存済みの進行中ルートを再表示する。
+  const handleContinue = (route: RouteRecord) => {
+    if (route.id == null) return;
+    setSelected(routeRecordToCandidate(route));
+    setRouteId(route.id);
+    setDetailCtx({
+      start: route.startCoord,
+      end: route.endCoord,
+      moods: route.moodFilters,
+    });
+    setCameFromHistory(true);
+    setScreen('detail');
+  };
+
+  const handleCompleted = () => {
     setResult(null);
     setContext(null);
     setSelected(null);
+    setRouteId(null);
+    setDetailCtx(null);
+    setCameFromHistory(false);
     setScreen('history');
   };
 
@@ -107,18 +157,21 @@ export function App() {
           />
         )}
 
-        {screen === 'detail' && selected && context && (
+        {screen === 'detail' && selected && detailCtx && routeId != null && (
           <DetailScreen
+            routeId={routeId}
             candidate={selected}
-            start={context.start}
-            end={context.end}
-            moods={context.moods}
-            onSaved={handleSaved}
-            onBack={() => setScreen('candidates')}
+            start={detailCtx.start}
+            end={detailCtx.end}
+            onCompleted={handleCompleted}
+            onBack={() =>
+              setScreen(cameFromHistory ? 'history' : 'candidates')
+            }
+            backLabel={cameFromHistory ? '履歴に戻る' : '候補一覧に戻る'}
           />
         )}
 
-        {screen === 'history' && <HistoryScreen />}
+        {screen === 'history' && <HistoryScreen onContinue={handleContinue} />}
 
         {screen === 'places' && <PlacesScreen />}
 

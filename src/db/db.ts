@@ -33,6 +33,21 @@ class SanpoDB extends Dexie {
     this.version(2).stores({
       places: '++id, name, createdAt',
     });
+    // v3: ルートに status(in_progress/completed)を追加。
+    // 選択した時点で保存し、歩行中にブラウザを閉じても復帰できるようにする。
+    // 既存レコードは全て歩行完了済みなので completed とみなす。
+    this.version(3)
+      .stores({
+        routes: '++id, date, status',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('routes')
+          .toCollection()
+          .modify((r: RouteRecord) => {
+            if (r.status == null) r.status = 'completed';
+          });
+      });
   }
 }
 
@@ -83,6 +98,11 @@ export async function saveRoute(record: RouteRecord): Promise<number> {
 /** ルートを削除する。 */
 export async function deleteRoute(id: number): Promise<void> {
   await db.routes.delete(id);
+}
+
+/** ルートを「完了」にする(候補選択時に保存済みのレコードを更新)。 */
+export async function markRouteCompleted(id: number): Promise<void> {
+  await db.routes.update(id, { status: 'completed' });
 }
 
 /** 登録した場所を作成順(古い順)で取得する。 */
@@ -141,7 +161,7 @@ export async function exportData(): Promise<BackupData> {
   ]);
   return {
     app: 'sanpo',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     settings: settings ?? null,
     routes,
@@ -160,7 +180,10 @@ export async function importData(data: BackupData): Promise<void> {
   await db.transaction('rw', db.routes, db.places, db.settings, async () => {
     await db.routes.clear();
     await db.places.clear();
-    await db.routes.bulkAdd(data.routes.map(withoutId));
+    // 旧バージョンのバックアップ(status 未対応)は completed とみなす。
+    await db.routes.bulkAdd(
+      data.routes.map((r) => withoutId({ ...r, status: r.status ?? 'completed' })),
+    );
     if (Array.isArray(data.places)) {
       await db.places.bulkAdd(data.places.map(withoutId));
     }

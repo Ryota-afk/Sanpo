@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { MapView } from '../components/MapView';
 import { highwayLabel } from '../core/wayTypes';
 import { formatKm } from '../core/geo';
@@ -12,7 +13,8 @@ export interface CandidatesScreenProps {
   start: LatLng;
   end: LatLng;
   threshold: number;
-  onSelect: (candidate: RouteCandidate) => void;
+  /** 候補を選ぶと即座に記録される。保存が終わるまで待つため Promise を返す。 */
+  onSelect: (candidate: RouteCandidate) => Promise<void>;
   onBack: () => void;
 }
 
@@ -43,6 +45,17 @@ export function CandidatesScreen({
   onBack,
 }: CandidatesScreenProps) {
   const { candidates } = result;
+  const [savingIndex, setSavingIndex] = useState<number | null>(null);
+
+  const handlePick = async (candidate: RouteCandidate, index: number) => {
+    if (savingIndex != null) return;
+    setSavingIndex(index);
+    try {
+      await onSelect(candidate);
+    } finally {
+      setSavingIndex(null);
+    }
+  };
 
   if (candidates.length === 0) {
     return (
@@ -83,13 +96,17 @@ export function CandidatesScreen({
       {candidates.map((c, i) => (
         <div
           key={i}
-          className="candidate-card"
-          onClick={() => onSelect(c)}
+          className={`candidate-card ${savingIndex === i ? 'selected' : ''}`}
+          style={savingIndex != null && savingIndex !== i ? { opacity: 0.5 } : undefined}
+          onClick={() => handlePick(c, i)}
           role="button"
           tabIndex={0}
         >
           <div className="candidate-card__header">
-            <span className="candidate-card__title">候補 {i + 1}</span>
+            <span className="candidate-card__title">
+              候補 {i + 1}
+              {savingIndex === i && '(記録中…)'}
+            </span>
             <OverlapBadge rate={c.overlapRate} />
           </div>
           <div className="stat-row">
@@ -106,7 +123,16 @@ export function CandidatesScreen({
         </div>
       ))}
 
-      <button className="btn btn--secondary" onClick={onBack}>
+      <p className="hint">
+        候補をタップすると、その場でルートが記録されます。歩いている途中で
+        ブラウザを閉じても、履歴タブから続きを確認できます。
+      </p>
+
+      <button
+        className="btn btn--secondary"
+        onClick={onBack}
+        disabled={savingIndex != null}
+      >
         条件を変えて再検索
       </button>
     </div>

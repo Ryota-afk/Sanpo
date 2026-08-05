@@ -45,10 +45,19 @@ export const ALL_MOODS: MoodFilter[] = [
   'narrow',
 ];
 
+/**
+ * ルートの状態。
+ * - in_progress: 候補として選択し、これから(または現在)歩いている途中。
+ *   選択した時点で保存されるため、ブラウザを閉じても消えない。
+ * - completed: 「このルートを歩いた」で完了にしたもの。
+ */
+export type RouteStatus = 'in_progress' | 'completed';
+
 /** 保存済みルート(履歴の1件)。 */
 export interface RouteRecord {
   id?: number;
-  date: string; // ISO8601
+  date: string; // ISO8601(選択した日時)
+  status: RouteStatus;
   startCoord: LatLng;
   endCoord: LatLng;
   wayIds: string[]; // 通過したOSM way IDのリスト(被り率計算に使用)
@@ -58,6 +67,7 @@ export interface RouteRecord {
   moodFilters: MoodFilter[];
   overlapRateAtSelection: number; // 選択時点の被り率(%)
   crossings?: [number, number][]; // ルート上の横断歩道の座標 [lat, lng]
+  wayTypeBreakdown?: Record<string, number>; // 通過した道タイプの内訳(道タイプ→距離m)
 }
 
 /** 登録した場所(自宅・バイト先など)。 */

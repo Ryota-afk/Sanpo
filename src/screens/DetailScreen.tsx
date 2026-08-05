@@ -9,21 +9,19 @@ import {
   TURN_ARROWS,
 } from '../core/navigation';
 import { useGeolocation } from '../hooks/useGeolocation';
-import { saveRoute } from '../db/db';
-import type {
-  LatLng,
-  MoodFilter,
-  RouteCandidate,
-  RouteRecord,
-} from '../types';
+import { markRouteCompleted } from '../db/db';
+import type { LatLng, RouteCandidate } from '../types';
 
 export interface DetailScreenProps {
+  /** 候補選択時、または履歴からの再開時にすでに保存済みのレコードID。 */
+  routeId: number;
   candidate: RouteCandidate;
   start: LatLng;
   end: LatLng;
-  moods: MoodFilter[];
-  onSaved: () => void;
+  onCompleted: () => void;
   onBack: () => void;
+  /** 戻るボタンのラベル(候補一覧からの遷移か、履歴からの再開かで変わる)。 */
+  backLabel?: string;
 }
 
 function formatDist(m: number): string {
@@ -32,12 +30,13 @@ function formatDist(m: number): string {
 }
 
 export function DetailScreen({
+  routeId,
   candidate,
   start,
   end,
-  moods,
-  onSaved,
+  onCompleted,
   onBack,
+  backLabel = '候補一覧に戻る',
 }: DetailScreenProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,20 +55,8 @@ export function DetailScreen({
     setSaving(true);
     setError(null);
     try {
-      const record: RouteRecord = {
-        date: new Date().toISOString(),
-        startCoord: start,
-        endCoord: end,
-        wayIds: candidate.wayIds,
-        geometry: candidate.geometry,
-        distanceM: candidate.distanceM,
-        durationMin: candidate.durationMin,
-        moodFilters: moods,
-        overlapRateAtSelection: candidate.overlapRate,
-        crossings,
-      };
-      await saveRoute(record);
-      onSaved();
+      await markRouteCompleted(routeId);
+      onCompleted();
     } catch (e) {
       setError(
         e instanceof Error ? e.message : '保存中にエラーが発生しました。',
@@ -85,6 +72,10 @@ export function DetailScreen({
   return (
     <div>
       {error && <div className="error">{error}</div>}
+      <div className="notice">
+        ✅ このルートは記録済みです。ブラウザを閉じても消えません。歩き終えたら
+        下の「このルートを歩いた」を押して完了にしてください。
+      </div>
       {geo.error && <div className="notice">{geo.error}</div>}
       {!geo.supported && (
         <div className="notice">
@@ -173,7 +164,7 @@ export function DetailScreen({
         {saving ? '保存中…' : 'このルートを歩いた(記録する)'}
       </button>
       <button className="btn btn--secondary" onClick={onBack} disabled={saving}>
-        候補一覧に戻る
+        {backLabel}
       </button>
     </div>
   );
