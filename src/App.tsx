@@ -6,6 +6,7 @@ import { DetailScreen } from './screens/DetailScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
 import { PlacesScreen } from './screens/PlacesScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+import { StableScreen } from './screens/StableScreen';
 import { saveRoute } from './db/db';
 import { routeRecordToCandidate } from './core/routeRecord';
 import type {
@@ -22,6 +23,7 @@ type Screen =
   | 'detail'
   | 'history'
   | 'places'
+  | 'stable'
   | 'settings';
 
 interface ProposalContext {
@@ -45,6 +47,7 @@ const HEADER_TITLES: Record<Screen, string> = {
   detail: 'ルート詳細',
   history: '履歴',
   places: '場所',
+  stable: '🐴 サンポ牧場',
   settings: '設定',
 };
 
@@ -128,14 +131,15 @@ export function App() {
     setScreen('detail');
   };
 
-  const handleCompleted = () => {
+  const handleCompleted = (trainedHorse: boolean) => {
     setResult(null);
     setContext(null);
     setSelected(null);
     setRouteId(null);
     setDetailCtx(null);
     setCameFromHistory(false);
-    setScreen('history');
+    // 現役の愛馬がいれば、調教/レースの結果をすぐ見られるよう牧場タブへ。
+    setScreen(trainedHorse ? 'stable' : 'history');
   };
 
   return (
@@ -174,6 +178,8 @@ export function App() {
         {screen === 'history' && <HistoryScreen onContinue={handleContinue} />}
 
         {screen === 'places' && <PlacesScreen />}
+
+        {screen === 'stable' && <StableScreen />}
 
         {screen === 'settings' && (
           <SettingsScreen
@@ -214,6 +220,13 @@ export function App() {
         >
           <span className="nav-icon">📍</span>
           場所
+        </button>
+        <button
+          className={screen === 'stable' ? 'active' : ''}
+          onClick={() => setScreen('stable')}
+        >
+          <span className="nav-icon">🐴</span>
+          牧場
         </button>
         <button
           className={screen === 'settings' ? 'active' : ''}

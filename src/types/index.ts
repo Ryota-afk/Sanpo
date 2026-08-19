@@ -111,3 +111,123 @@ export interface ProposalResult {
   /** 候補が生成できなかった場合の説明メッセージ。 */
   message?: string;
 }
+
+// ── サンポ牧場(愛馬育成) ──────────────────────────────
+
+export type HorseSex = 'male' | 'female';
+
+export type Coat =
+  | 'kage' // 鹿毛
+  | 'kuroKage' // 黒鹿毛
+  | 'kuri' // 栗毛
+  | 'tochiguri' // 栃栗毛
+  | 'ao' // 青毛
+  | 'ashi' // 芦毛
+  | 'shiro'; // 白毛
+
+export const COAT_LABELS: Record<Coat, string> = {
+  kage: '鹿毛',
+  kuroKage: '黒鹿毛',
+  kuri: '栗毛',
+  tochiguri: '栃栗毛',
+  ao: '青毛',
+  ashi: '芦毛',
+  shiro: '白毛',
+};
+
+export const COAT_COLORS: Record<Coat, string> = {
+  kage: '#6B4A2F',
+  kuroKage: '#3E2A1C',
+  kuri: '#9A5C2C',
+  tochiguri: '#6E3A22',
+  ao: '#1C1A19',
+  ashi: '#C9C6C0',
+  shiro: '#F2F0EA',
+};
+
+/** 成長型。引退して開示されるまでは非公開。 */
+export type GrowthType = 'early' | 'normal' | 'late' | 'sustained';
+
+export const GROWTH_TYPE_LABELS: Record<GrowthType, string> = {
+  early: '早熟',
+  normal: '普通',
+  late: '晩成',
+  sustained: '持続',
+};
+
+export type Temperament = 'calm' | 'gentle' | 'spirited' | 'difficult' | 'fierce';
+
+export const TEMPERAMENT_LABELS: Record<Temperament, string> = {
+  calm: 'おとなしい',
+  gentle: '素直',
+  spirited: '勝気',
+  difficult: '気難しい',
+  fierce: '激しい',
+};
+
+export type RunningStyle = 'front' | 'stalk' | 'chase' | 'closer';
+
+export const RUNNING_STYLE_LABELS: Record<RunningStyle, string> = {
+  front: '逃げ',
+  stalk: '先行',
+  chase: '差し',
+  closer: '追込',
+};
+
+export type DistanceAptitude = 'sprint' | 'mile' | 'middle' | 'long';
+
+export const DISTANCE_APTITUDE_LABELS: Record<DistanceAptitude, string> = {
+  sprint: '短距離',
+  mile: 'マイル',
+  middle: '中距離',
+  long: '長距離',
+};
+
+/** 五能力。ユーザーには数値のまま見せず、調教師コメント経由で伝える。 */
+export interface HorseParams {
+  speed: number;
+  stamina: number;
+  power: number;
+  guts: number;
+  wisdom: number;
+}
+
+export type CareerEntryKind = 'train' | 'race' | 'retire';
+
+/** キャリア中の1回分の出来事(調教・レース・引退)。 */
+export interface HorseCareerEntry {
+  walkIndex: number; // キャリア中の何回目の散歩か(1〜12)
+  date: string; // ISO8601
+  kind: CareerEntryKind;
+  text: string; // 調教師コメント、または実況テキスト
+  raceName?: string;
+  placing?: number;
+  fieldSize?: number;
+}
+
+export type HorseStatus = 'active' | 'retired';
+
+/** 愛馬(競走馬)。 */
+export interface Horse {
+  id?: number;
+  name: string;
+  sex: HorseSex;
+  coat: Coat;
+  temperament: Temperament;
+  runningStyle: RunningStyle;
+  /** 成長型。内部的には常に保持するが、引退まで UI には出さない。 */
+  growthType: GrowthType;
+  growthRevealed: boolean;
+  status: HorseStatus;
+  birthAt: string; // ISO8601
+  /** キャリア中の散歩回数(0〜12)。歩くたびに進む、この馬固有の暦。 */
+  ageWalks: number;
+  fatigue: number; // 0〜100
+  params: HorseParams;
+  /** 調教で通った芝系・ダート系の道のりの累計(m)。適性の判定材料。 */
+  turfExposureM: number;
+  dirtExposureM: number;
+  totalDistanceM: number;
+  wins: number;
+  careerLog: HorseCareerEntry[];
+}

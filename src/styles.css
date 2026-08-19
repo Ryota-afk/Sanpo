@@ -475,3 +475,125 @@ input[type='range'] {
   font-size: 13px;
   margin-top: 0;
 }
+
+.horse-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.coat-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.horse-name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.horse-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.apt-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+
+.apt-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.apt-chip b {
+  font-size: 14px;
+}
+
+.fatigue-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  margin-top: 4px;
+}
+
+.fatigue-badge.good {
+  background: var(--green-light);
+  color: var(--green-dark);
+}
+
+.fatigue-badge.ok {
+  background: var(--accent-yellow);
+  color: #7b5c00;
+}
+
+.fatigue-badge.bad {
+  background: #fed7d7;
+  color: #c53030;
+}
+
+.career-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.career-entry {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.career-entry:last-child {
+  border-bottom: none;
+}
+
+.career-entry__icon {
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.career-entry__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.career-entry__meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.career-entry__text {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.retired-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.retired-list-item:last-child {
+  border-bottom: none;
+}

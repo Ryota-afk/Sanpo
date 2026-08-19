@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
-import type { Place, RouteRecord, Settings } from '../types';
+import type { Horse, Place, RouteRecord, Settings } from '../types';
+import { processWalk, type WalkReport } from '../core/horse';
 
 /** Overpass 取得結果のキャッシュエントリ。 */
 export interface OverpassCacheEntry {
@@ -21,6 +22,7 @@ class SanpoDB extends Dexie {
   settings!: Table<Settings, string>;
   overpassCache!: Table<OverpassCacheEntry, string>;
   places!: Table<Place, number>;
+  horses!: Table<Horse, number>;
 
   constructor() {
     super('sanpo-db');
@@ -48,6 +50,10 @@ class SanpoDB extends Dexie {
             if (r.status == null) r.status = 'completed';
           });
       });
+    // v4: サンポ牧場(愛馬育成)。愛馬テーブルを追加。
+    this.version(4).stores({
+      horses: '++id, status',
+    });
   }
 }
 
@@ -135,6 +141,32 @@ export async function deletePlace(id: number): Promise<void> {
   await db.places.delete(id);
 }
 
+/** 現役の愛馬を取得する。いなければ undefined。 */
+export async function getActiveHorse(): Promise<Horse | undefined> {
+  return db.horses.where('status').equals('active').first();
+}
+
+/** 誕生した愛馬を保存する。 */
+export async function addHorse(horse: Horse): Promise<number> {
+  return db.horses.add(horse);
+}
+
+/**
+ * ルート完了時に呼ぶ。現役の愛馬がいれば、その散歩をキャリアに反映する
+ * (調教 or レース)。愛馬がいなければ何もせず null を返す。
+ */
+export async function completeWalkForHorse(
+  routeId: number,
+): Promise<WalkReport | null> {
+  const route = await db.routes.get(routeId);
+  if (!route) return null;
+  const horse = await getActiveHorse();
+  if (!horse || horse.id == null) return null;
+  const report = processWalk(horse, route);
+  await db.horses.put({ ...report.horse, id: horse.id });
+  return report;
+}
+
 /** 自動採番の id を除いたコピーを返す(取り込み時に id を振り直すため)。 */
 function withoutId<T extends { id?: number }>(o: T): Omit<T, 'id'> {
   const copy = { ...o };
@@ -150,45 +182,60 @@ export interface BackupData {
   settings: Settings | null;
   routes: RouteRecord[];
   places: Place[];
+  horses: Horse[];
 }
 
-/** 履歴・場所・設定をまとめて書き出す。 */
+/** 履歴・場所・設定・愛馬をまとめて書き出す。 */
 export async function exportData(): Promise<BackupData> {
-  const [settings, routes, places] = await Promise.all([
+  const [settings, routes, places, horses] = await Promise.all([
     db.settings.get('user'),
     db.routes.orderBy('date').toArray(),
     db.places.orderBy('createdAt').toArray(),
+    db.horses.toArray(),
   ]);
   return {
     app: 'sanpo',
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     settings: settings ?? null,
     routes,
     places,
+    horses,
   };
 }
 
 /**
- * バックアップを読み込む。既存の履歴・場所を置き換える(復元用)。
+ * バックアップを読み込む。既存の履歴・場所・愛馬を置き換える(復元用)。
  * id は振り直すため、書き出し時の id は無視する。
  */
 export async function importData(data: BackupData): Promise<void> {
   if (data.app !== 'sanpo' || !Array.isArray(data.routes)) {
     throw new Error('このファイルは Sanpo のバックアップではありません。');
   }
-  await db.transaction('rw', db.routes, db.places, db.settings, async () => {
-    await db.routes.clear();
-    await db.places.clear();
-    // 旧バージョンのバックアップ(status 未対応)は completed とみなす。
-    await db.routes.bulkAdd(
-      data.routes.map((r) => withoutId({ ...r, status: r.status ?? 'completed' })),
-    );
-    if (Array.isArray(data.places)) {
-      await db.places.bulkAdd(data.places.map(withoutId));
-    }
-    if (data.settings) {
-      await db.settings.put({ ...data.settings, id: 'user' });
-    }
-  });
+  await db.transaction(
+    'rw',
+    db.routes,
+    db.places,
+    db.settings,
+    db.horses,
+    async () => {
+      await db.routes.clear();
+      await db.places.clear();
+      await db.horses.clear();
+      // 旧バージョンのバックアップ(status 未対応)は completed とみなす。
+      await db.routes.bulkAdd(
+        data.routes.map((r) => withoutId({ ...r, status: r.status ?? 'completed' })),
+      );
+      if (Array.isArray(data.places)) {
+        await db.places.bulkAdd(data.places.map(withoutId));
+      }
+      // 旧バージョンのバックアップ(v3以前)には horses が無い。
+      if (Array.isArray(data.horses)) {
+        await db.horses.bulkAdd(data.horses.map(withoutId));
+      }
+      if (data.settings) {
+        await db.settings.put({ ...data.settings, id: 'user' });
+      }
+    },
+  );
 }

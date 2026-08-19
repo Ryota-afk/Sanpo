@@ -48,7 +48,7 @@ export function SettingsScreen({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     setBackupMsg(
-      `書き出しました(履歴 ${data.routes.length} 件・場所 ${data.places.length} 件)。`,
+      `書き出しました(履歴 ${data.routes.length} 件・場所 ${data.places.length} 件・愛馬 ${data.horses.length} 頭)。`,
     );
   };
 
@@ -59,8 +59,9 @@ export function SettingsScreen({
       const data = JSON.parse(text);
       const routeCount = Array.isArray(data.routes) ? data.routes.length : 0;
       const placeCount = Array.isArray(data.places) ? data.places.length : 0;
+      const horseCount = Array.isArray(data.horses) ? data.horses.length : 0;
       const ok = window.confirm(
-        `このバックアップ(履歴 ${routeCount} 件・場所 ${placeCount} 件)で` +
+        `このバックアップ(履歴 ${routeCount} 件・場所 ${placeCount} 件・愛馬 ${horseCount} 頭)で` +
           '現在のデータを置き換えます。よろしいですか?',
       );
       if (!ok) return;
@@ -130,7 +131,7 @@ export function SettingsScreen({
         <div className="card" style={{ marginTop: 16 }}>
           <h2>バックアップ</h2>
           <p className="hint" style={{ marginTop: 0 }}>
-            履歴・場所・設定をファイルに書き出して保存できます。機種変更や、
+            履歴・場所・設定・愛馬をファイルに書き出して保存できます。機種変更や、
             ブラウザにデータを消されたときの復元に使えます。
           </p>
           {backupMsg && <div className="notice">{backupMsg}</div>}

@@ -9,7 +9,7 @@ import {
   TURN_ARROWS,
 } from '../core/navigation';
 import { useGeolocation } from '../hooks/useGeolocation';
-import { markRouteCompleted } from '../db/db';
+import { markRouteCompleted, completeWalkForHorse } from '../db/db';
 import type { LatLng, RouteCandidate } from '../types';
 
 export interface DetailScreenProps {
@@ -18,7 +18,8 @@ export interface DetailScreenProps {
   candidate: RouteCandidate;
   start: LatLng;
   end: LatLng;
-  onCompleted: () => void;
+  /** 完了時に呼ばれる。現役の愛馬がいて今回の散歩を反映できた場合は true。 */
+  onCompleted: (trainedHorse: boolean) => void;
   onBack: () => void;
   /** 戻るボタンのラベル(候補一覧からの遷移か、履歴からの再開かで変わる)。 */
   backLabel?: string;
@@ -56,7 +57,8 @@ export function DetailScreen({
     setError(null);
     try {
       await markRouteCompleted(routeId);
-      onCompleted();
+      const report = await completeWalkForHorse(routeId);
+      onCompleted(report != null);
     } catch (e) {
       setError(
         e instanceof Error ? e.message : '保存中にエラーが発生しました。',
