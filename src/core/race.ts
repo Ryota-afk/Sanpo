@@ -106,6 +106,10 @@ function fitForSurface(horse: Horse, surface: 'turf' | 'dirt'): number {
 const LANDMARK_RACE_PHRASES: Record<RouteLandmarkKind, string> = {
   convenience: 'コンビニの前を走り抜けて、',
   river: '河川敷の直線で、',
+  school: '学校前の声援の中、',
+  park: '公園沿いの直線で、',
+  shrine: '神社前を駆け抜けて、',
+  station: '駅前の喧騒の中、',
 };
 
 function buildCommentary(

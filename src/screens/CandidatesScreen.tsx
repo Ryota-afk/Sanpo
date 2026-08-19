@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { MapView } from '../components/MapView';
 import { highwayLabel } from '../core/wayTypes';
 import { formatKm } from '../core/geo';
-import type {
-  LatLng,
-  ProposalResult,
-  RouteCandidate,
+import {
+  ROUTE_LANDMARK_ICONS,
+  ROUTE_LANDMARK_LABELS,
+  type LatLng,
+  type ProposalResult,
+  type RouteCandidate,
+  type RouteLandmarkKind,
 } from '../types';
 
 export interface CandidatesScreenProps {
@@ -30,6 +33,24 @@ function Breakdown({ breakdown }: { breakdown: Record<string, number> }) {
       {entries.map(([hw, m]) => (
         <span key={hw} className="tag">
           {highwayLabel(hw)} {formatKm(m)}km
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** ルート上のランドマークをアイコン+件数で見せる。歩く前にどんな道か掴めるように。 */
+function LandmarkPreview({ landmarks }: { landmarks: { kind: RouteLandmarkKind }[] }) {
+  if (landmarks.length === 0) return null;
+  const counts = new Map<RouteLandmarkKind, number>();
+  for (const l of landmarks) {
+    counts.set(l.kind, (counts.get(l.kind) ?? 0) + 1);
+  }
+  return (
+    <div className="breakdown">
+      {[...counts.entries()].map(([kind, count]) => (
+        <span key={kind} className="tag" title={ROUTE_LANDMARK_LABELS[kind]}>
+          {ROUTE_LANDMARK_ICONS[kind]} {ROUTE_LANDMARK_LABELS[kind]} ×{count}
         </span>
       ))}
     </div>
@@ -120,6 +141,7 @@ export function CandidatesScreen({
             </span>
           </div>
           <Breakdown breakdown={c.wayTypeBreakdown} />
+          <LandmarkPreview landmarks={c.landmarks} />
         </div>
       ))}
 

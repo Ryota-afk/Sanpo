@@ -94,6 +94,10 @@ function buildRawCandidate(
   const wasNear: Record<RouteLandmarkKind, boolean> = {
     convenience: false,
     river: false,
+    school: false,
+    park: false,
+    shrine: false,
+    station: false,
   };
   let distanceM = 0;
 
@@ -123,6 +127,10 @@ function buildRawCandidate(
     };
     registerLandmark('convenience', data.nearConvenience);
     registerLandmark('river', data.nearRiver);
+    registerLandmark('school', data.nearSchool);
+    registerLandmark('park', data.nearPark);
+    registerLandmark('shrine', data.nearShrine);
+    registerLandmark('station', data.nearStation);
 
     distanceM += data.lengthM;
     edges.push({ wayId: data.wayId, lengthM: data.lengthM });

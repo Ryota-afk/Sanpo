@@ -169,10 +169,14 @@ interface TrainingEffect {
 }
 
 // ルート上で実際に通過したランドマークの効果。統計的な近似ではなく、
-// 実座標での近接判定(コンビニ・川沿い)に基づく確定イベント。
+// 実座標での近接判定に基づく確定イベント。
 const LANDMARK_PHRASES: Record<RouteLandmarkKind, string> = {
   convenience: 'コンビニの前でひと息つきました',
   river: '河川敷を気持ちよく走りました',
+  school: '下校時刻の学校前を通り、賑わいの中で気合が入りました',
+  park: '公園の中を伸び伸びと駆け抜けました',
+  shrine: '神社の前で一礼、気持ちが引き締まりました',
+  station: '駅前の賑わいの中を駆け抜けました',
 };
 
 function applyLandmarkEffect(
@@ -181,17 +185,46 @@ function applyLandmarkEffect(
   kind: RouteLandmarkKind,
   km: number,
 ): { deltas: HorseParams; fatigueDelta: number } {
-  if (kind === 'convenience') {
-    return {
-      deltas: { ...deltas, wisdom: deltas.wisdom + km * 0.4 },
-      fatigueDelta: fatigueDelta - km * 3,
-    };
+  switch (kind) {
+    case 'convenience':
+      return {
+        deltas: { ...deltas, wisdom: deltas.wisdom + km * 0.4 },
+        fatigueDelta: fatigueDelta - km * 3,
+      };
+    case 'river':
+      return {
+        deltas: { ...deltas, stamina: deltas.stamina + km * 0.5 },
+        fatigueDelta: fatigueDelta - km * 2,
+      };
+    case 'school':
+      // 声援を受けたような賑わい。気合は入るが、多少気が張って疲れる。
+      return {
+        deltas: { ...deltas, guts: deltas.guts + km * 0.4 },
+        fatigueDelta: fatigueDelta + km * 1,
+      };
+    case 'park':
+      // 放牧に近い、正味回復寄りのひととき。
+      return {
+        deltas: { ...deltas, stamina: deltas.stamina + km * 0.3 },
+        fatigueDelta: fatigueDelta - km * 4,
+      };
+    case 'shrine':
+      // 一礼して気持ちを整える。賢さ・根性の両方に少し効く。
+      return {
+        deltas: {
+          ...deltas,
+          wisdom: deltas.wisdom + km * 0.3,
+          guts: deltas.guts + km * 0.2,
+        },
+        fatigueDelta,
+      };
+    case 'station':
+      // 人混みを縫って走る、活気はあるが騒々しい区間。
+      return {
+        deltas: { ...deltas, speed: deltas.speed + km * 0.4 },
+        fatigueDelta: fatigueDelta + km * 1.5,
+      };
   }
-  // river
-  return {
-    deltas: { ...deltas, stamina: deltas.stamina + km * 0.5 },
-    fatigueDelta: fatigueDelta - km * 2,
-  };
 }
 
 function pickMenuLabel(

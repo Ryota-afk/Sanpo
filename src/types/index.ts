@@ -49,7 +49,31 @@ export const ALL_MOODS: MoodFilter[] = [
  * ルート上で実際に通過した「地物」。コンビニ・川沿いなど、統計的な推測ではなく
  * 実座標での近接判定から来る、位置つきの出来事。
  */
-export type RouteLandmarkKind = 'convenience' | 'river';
+export type RouteLandmarkKind =
+  | 'convenience'
+  | 'river'
+  | 'school'
+  | 'park'
+  | 'shrine'
+  | 'station';
+
+export const ROUTE_LANDMARK_LABELS: Record<RouteLandmarkKind, string> = {
+  convenience: 'コンビニ',
+  river: '川沿い',
+  school: '学校',
+  park: '公園',
+  shrine: '神社仏閣',
+  station: '駅',
+};
+
+export const ROUTE_LANDMARK_ICONS: Record<RouteLandmarkKind, string> = {
+  convenience: '🏪',
+  river: '🏞️',
+  school: '🏫',
+  park: '🌳',
+  shrine: '⛩️',
+  station: '🚉',
+};
 
 export interface RouteLandmark {
   /** スタートからの累積距離(m)。 */

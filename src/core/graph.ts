@@ -23,6 +23,11 @@ export interface EdgeData {
   /** ルート生成時、実際に通ったエッジからランドマークを検出するための近接フラグ。 */
   nearConvenience: boolean;
   nearRiver: boolean;
+  nearSchool: boolean;
+  /** 公園の中を通ったか。「緑の多い道」ムード判定(inGreen)と同じ値を使う。 */
+  nearPark: boolean;
+  nearShrine: boolean;
+  nearStation: boolean;
 }
 
 /** ノード id -> 座標。ngraph ノードの data にも保持する。 */
@@ -41,6 +46,9 @@ const LAMP_RADIUS_M = 30; // 街灯がこの範囲にあれば「明るい」
 const WATER_RADIUS_M = 45; // 水辺がこの範囲にあれば「水辺の道」
 const CONVENIENCE_RADIUS_M = 40; // コンビニがこの範囲にあれば「通過した」とみなす
 const RIVER_RADIUS_M = 45; // 川沿いランドマーク判定用(water とは別に river/stream/canal のみ)
+const SCHOOL_RADIUS_M = 50;
+const SHRINE_RADIUS_M = 40;
+const STATION_RADIUS_M = 60;
 
 const GREEN_LEISURE = new Set([
   'park',
@@ -91,7 +99,7 @@ function wayCoords(
   return coords;
 }
 
-/** 分類に使う周辺データ(住宅街/緑/水辺/街灯/コンビニ)をまとめて構築する。 */
+/** 分類に使う周辺データ(住宅街/緑/水辺/街灯/コンビニ/学校/神社仏閣/駅)をまとめて構築する。 */
 interface FeatureContext {
   residentialPolys: PolygonWithBBox[];
   greenPolys: PolygonWithBBox[];
@@ -101,6 +109,9 @@ interface FeatureContext {
   convenience: PointGrid;
   /** water とは別に、river/stream/canal(河川)のみの線。「川沿い」ランドマーク判定用。 */
   riverLine: PointGrid;
+  school: PointGrid;
+  shrine: PointGrid;
+  station: PointGrid;
 }
 
 function buildFeatureContext(
@@ -116,6 +127,9 @@ function buildFeatureContext(
   const lamps = new PointGrid(LAMP_RADIUS_M, refLat);
   const convenience = new PointGrid(CONVENIENCE_RADIUS_M, refLat);
   const riverLine = new PointGrid(RIVER_RADIUS_M, refLat);
+  const school = new PointGrid(SCHOOL_RADIUS_M, refLat);
+  const shrine = new PointGrid(SHRINE_RADIUS_M, refLat);
+  const station = new PointGrid(STATION_RADIUS_M, refLat);
 
   for (const way of ways) {
     const t = way.tags;
@@ -145,9 +159,21 @@ function buildFeatureContext(
     if (t.waterway && WATER_WATERWAY.has(t.waterway)) {
       for (const c of wayCoords(way, nodeCoords)) riverLine.add(c);
     }
+
+    // 学校・神社仏閣・駅は敷地(way)として取得されることも多いので、
+    // 敷地を構成する各座標を点グリッドに入れて「近さ」で判定する。
+    if (t.amenity === 'school') {
+      for (const c of wayCoords(way, nodeCoords)) school.add(c);
+    }
+    if (t.amenity === 'place_of_worship') {
+      for (const c of wayCoords(way, nodeCoords)) shrine.add(c);
+    }
+    if (t.railway === 'station') {
+      for (const c of wayCoords(way, nodeCoords)) station.add(c);
+    }
   }
 
-  // 街灯・コンビニは独立ノードとして取得される。
+  // 街灯・コンビニ・学校・神社仏閣・駅は独立ノードとしても取得される。
   for (const el of elements) {
     if (el.type !== 'node' || !el.tags) continue;
     if (el.tags.highway === 'street_lamp') {
@@ -156,9 +182,29 @@ function buildFeatureContext(
     if (el.tags.shop === 'convenience') {
       convenience.add({ lat: el.lat, lng: el.lon });
     }
+    if (el.tags.amenity === 'school') {
+      school.add({ lat: el.lat, lng: el.lon });
+    }
+    if (el.tags.amenity === 'place_of_worship') {
+      shrine.add({ lat: el.lat, lng: el.lon });
+    }
+    if (el.tags.railway === 'station') {
+      station.add({ lat: el.lat, lng: el.lon });
+    }
   }
 
-  return { residentialPolys, greenPolys, greenLine, water, lamps, convenience, riverLine };
+  return {
+    residentialPolys,
+    greenPolys,
+    greenLine,
+    water,
+    lamps,
+    convenience,
+    riverLine,
+    school,
+    shrine,
+    station,
+  };
 }
 
 /**
@@ -217,6 +263,10 @@ export function buildGraph(data: OverpassResponse): RoadGraph {
         lng: (a.lng + b.lng) / 2,
       };
 
+      const inGreen =
+        polygonsContain(mid, features.greenPolys) ||
+        features.greenLine.hasWithin(mid);
+
       const moods = classifyEdge({
         highway,
         lit: tags.lit,
@@ -227,9 +277,7 @@ export function buildGraph(data: OverpassResponse): RoadGraph {
         width: tags.width,
         lanes: tags.lanes,
         inResidentialLanduse: polygonsContain(mid, features.residentialPolys),
-        inGreen:
-          polygonsContain(mid, features.greenPolys) ||
-          features.greenLine.hasWithin(mid),
+        inGreen,
         nearWater: features.water.hasWithin(mid),
         nearLamp: features.lamps.hasWithin(mid),
       });
@@ -242,6 +290,10 @@ export function buildGraph(data: OverpassResponse): RoadGraph {
         moods,
         nearConvenience: features.convenience.hasWithin(mid),
         nearRiver: features.riverLine.hasWithin(mid),
+        nearSchool: features.school.hasWithin(mid),
+        nearPark: inGreen,
+        nearShrine: features.shrine.hasWithin(mid),
+        nearStation: features.station.hasWithin(mid),
       };
       graph.addLink(aId, bId, edgeData);
     }
