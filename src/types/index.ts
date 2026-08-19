@@ -183,7 +183,36 @@ export const DISTANCE_APTITUDE_LABELS: Record<DistanceAptitude, string> = {
   long: '長距離',
 };
 
-/** 五能力。ユーザーには数値のまま見せず、調教師コメント経由で伝える。 */
+/** 能力ランク(ウイニングポスト風のS〜G)。 */
+export type Rank = 'S' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
+
+/** 1回の散歩=1頭の生涯、で走らせるレースの路線。 */
+export type CoursePlan = 'turf' | 'dirt' | 'sprint' | 'classic';
+
+export const COURSE_PLAN_LABELS: Record<CoursePlan, string> = {
+  turf: '芝路線',
+  dirt: 'ダート路線',
+  sprint: '短距離路線',
+  classic: '三冠路線',
+};
+
+export const COURSE_PLAN_DESCRIPTIONS: Record<CoursePlan, string> = {
+  turf: '芝の重賞を中心に、幅広い距離で経験を積む王道コース。',
+  dirt: 'ダートの重賞を中心に走る。パワー・ダート適性が活きる。',
+  sprint: '短距離戦だけを使う。スピード寄りの馬向き。',
+  classic: '皐月賞→ダービー→菊花賞を模した、距離が伸びていく王道路線。',
+};
+
+/** レース数の目安(距離から出す自動値に対する傾向)。 */
+export type RaceCountPreference = 'few' | 'normal' | 'many';
+
+export const RACE_COUNT_PREFERENCE_LABELS: Record<RaceCountPreference, string> = {
+  few: '少なめ',
+  normal: '標準',
+  many: '多め',
+};
+
+/** 五能力。ユーザーには数値のまま見せず、ランク(S〜G)経由で伝える。 */
 export interface HorseParams {
   speed: number;
   stamina: number;
@@ -192,11 +221,19 @@ export interface HorseParams {
   wisdom: number;
 }
 
+export const PARAM_LABELS: Record<keyof HorseParams, string> = {
+  speed: '速さ',
+  stamina: 'スタミナ',
+  power: 'パワー',
+  guts: '根性',
+  wisdom: '賢さ',
+};
+
 export type CareerEntryKind = 'train' | 'race' | 'retire';
 
-/** キャリア中の1回分の出来事(調教・レース・引退)。 */
+/** 生涯中の1回分の出来事(調教・レース・引退)。 */
 export interface HorseCareerEntry {
-  walkIndex: number; // キャリア中の何回目の散歩か(1〜12)
+  walkIndex: number; // 生涯中の何回目のチェックポイントか(1始まり。総数はレース数と路線で変わる)
   date: string; // ISO8601
   kind: CareerEntryKind;
   text: string; // 調教師コメント、または実況テキスト
@@ -227,7 +264,7 @@ export interface Horse {
   growthRevealed: boolean;
   status: HorseStatus;
   birthAt: string; // ISO8601
-  /** キャリア中の散歩回数(0〜12)。歩くたびに進む、この馬固有の暦。 */
+  /** 生涯中に消化したチェックポイント数。1回の散歩の完了時に一気に生涯分だけ進む。 */
   ageWalks: number;
   fatigue: number; // 0〜100
   params: HorseParams;
@@ -243,4 +280,8 @@ export interface Horse {
   damId?: number;
   /** 3世代以内に共通の祖先を持つ配合で生まれたか。 */
   inbredAtBirth?: boolean;
+  /** この馬の生涯で使う路線。散歩を歩き終えた時点で解決される。 */
+  planCourse?: CoursePlan;
+  /** レース数の目安(距離から出す自動値に対する傾向)。 */
+  raceCountPreference?: RaceCountPreference;
 }

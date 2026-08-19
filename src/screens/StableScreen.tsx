@@ -1,49 +1,26 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, addHorseWithPedigree, breedHorses } from '../db/db';
+import { distanceAptitudeMarks, paramRank } from '../core/career';
 import {
-  CAREER_LENGTH_WALKS,
-  distanceAptitudeMarks,
-  stageLabelForWalk,
-  surfaceAptitudeMarks,
-} from '../core/career';
+  CoursePlanField,
+  PedigreeTable,
+  RaceCountField,
+  RankBadge,
+} from '../components/HorseUI';
 import {
   COAT_COLORS,
   COAT_LABELS,
+  COURSE_PLAN_LABELS,
   DISTANCE_APTITUDE_LABELS,
   GROWTH_TYPE_LABELS,
-  RUNNING_STYLE_LABELS,
-  TEMPERAMENT_LABELS,
+  RACE_COUNT_PREFERENCE_LABELS,
+  type CoursePlan,
   type DistanceAptitude,
   type Horse,
-  type HorseCareerEntry,
   type HorseSex,
+  type RaceCountPreference,
 } from '../types';
-
-function fatigueState(fatigue: number): { label: string; cls: string } {
-  if (fatigue >= 80) return { label: '要休養', cls: 'bad' };
-  if (fatigue >= 60) return { label: 'やや疲れ気味', cls: 'ok' };
-  if (fatigue <= 25) return { label: '絶好調', cls: 'good' };
-  return { label: '良好', cls: 'good' };
-}
-
-function CareerEntryRow({ entry }: { entry: HorseCareerEntry }) {
-  const icon = entry.kind === 'race' ? '🏁' : entry.kind === 'retire' ? '🎓' : '🏋️';
-  return (
-    <li className="career-entry">
-      <span className="career-entry__icon">{icon}</span>
-      <div className="career-entry__body">
-        <div className="career-entry__meta">
-          {entry.walkIndex}回目
-          {entry.kind === 'race' &&
-            entry.raceName &&
-            ` ・ ${entry.raceName}(${entry.placing}着 / ${entry.fieldSize}頭)`}
-        </div>
-        <div className="career-entry__text">{entry.text}</div>
-      </div>
-    </li>
-  );
-}
 
 function NamingForm({
   onCreated,
@@ -55,6 +32,9 @@ function NamingForm({
   const [open, setOpen] = useState(!collapsedByDefault);
   const [name, setName] = useState('');
   const [sex, setSex] = useState<HorseSex>('male');
+  const [coursePlan, setCoursePlan] = useState<CoursePlan>('turf');
+  const [raceCountPreference, setRaceCountPreference] =
+    useState<RaceCountPreference>('normal');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -69,7 +49,7 @@ function NamingForm({
       return;
     }
     setSaving(true);
-    await addHorseWithPedigree(trimmed, sex);
+    await addHorseWithPedigree(trimmed, sex, coursePlan, raceCountPreference);
     setSaving(false);
     setName('');
     onCreated();
@@ -87,9 +67,8 @@ function NamingForm({
     <div className="card">
       <h2>🐴 愛馬を迎える</h2>
       <p className="hint" style={{ marginTop: 0 }}>
-        名付けると、次の散歩から調教が始まります。全12回の散歩でキャリア(育成期
-        →2歳→3歳→4歳・引退)が一周します。距離やペースは強さに、
-        <b>散歩の回数</b>だけがキャリアの進み方に反映されます。
+        名付けて、路線とレース数を決めておくと出走待ちになります。次にルートを歩き終えた
+        瞬間、そのルートがまるごとこの馬の<b>生涯(誕生〜引退)</b>になります。
         あわせて3世代分の祖先(血統表の元)も自動的に配られます。
       </p>
       <div className="field">
@@ -123,6 +102,8 @@ function NamingForm({
           </div>
         </div>
       </div>
+      <CoursePlanField value={coursePlan} onChange={setCoursePlan} />
+      <RaceCountField value={raceCountPreference} onChange={setRaceCountPreference} />
       {error && <div className="error">{error}</div>}
       <button className="btn" disabled={saving} onClick={handleCreate}>
         {saving ? '登録中…' : '名付ける'}
@@ -148,6 +129,9 @@ function BreedingForm({
   const [name, setName] = useState('');
   const [sireId, setSireId] = useState<number | null>(stallions[0]?.id ?? null);
   const [damId, setDamId] = useState<number | null>(broodmares[0]?.id ?? null);
+  const [coursePlan, setCoursePlan] = useState<CoursePlan>('turf');
+  const [raceCountPreference, setRaceCountPreference] =
+    useState<RaceCountPreference>('normal');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -166,7 +150,7 @@ function BreedingForm({
       return;
     }
     setSaving(true);
-    await breedHorses(trimmed, sireId, damId);
+    await breedHorses(trimmed, sireId, damId, coursePlan, raceCountPreference);
     setSaving(false);
     setName('');
     onCreated();
@@ -221,6 +205,8 @@ function BreedingForm({
           onChange={(e) => setName(e.target.value)}
         />
       </div>
+      <CoursePlanField value={coursePlan} onChange={setCoursePlan} />
+      <RaceCountField value={raceCountPreference} onChange={setRaceCountPreference} />
       {error && <div className="error">{error}</div>}
       <button className="btn" disabled={saving} onClick={handleBreed}>
         {saving ? '配合中…' : '仔を誕生させる'}
@@ -229,97 +215,14 @@ function BreedingForm({
   );
 }
 
-function PedigreeCell({
-  horse,
-  duplicated,
-}: {
-  horse?: Horse;
-  duplicated: boolean;
-}) {
-  if (!horse) {
-    return <div className="pedigree__cell pedigree__cell--empty" />;
-  }
-  const isIntro = (horse.origin ?? 'bred') === 'intro';
-  return (
-    <div className={`pedigree__cell ${isIntro ? 'pedigree__cell--intro' : ''}`}>
-      <span className="pedigree__name">
-        {horse.name} {horse.sex === 'male' ? '♂' : '♀'}
-      </span>
-      <span className="pedigree__meta">
-        {isIntro ? '導入' : `自家産・${horse.wins}勝`}
-        {duplicated && <span className="pedigree__dup">近親</span>}
-      </span>
-    </div>
-  );
-}
-
-/** 3世代血統表(父母・祖父母・曾祖父母)。血統情報が無ければ何も表示しない。 */
-function PedigreeTable({
+/** 出走待ちの馬(まだ散歩していない)。能力はまだ何も起きていないので出さない。 */
+function PendingHorseCard({
   horse,
   byId,
 }: {
   horse: Horse;
   byId: Map<number, Horse>;
 }) {
-  const sire = horse.sireId != null ? byId.get(horse.sireId) : undefined;
-  const dam = horse.damId != null ? byId.get(horse.damId) : undefined;
-  if (!sire && !dam) return null;
-
-  const nextGen = (gen: (Horse | undefined)[]) =>
-    gen.flatMap((h) =>
-      h
-        ? [
-            h.sireId != null ? byId.get(h.sireId) : undefined,
-            h.damId != null ? byId.get(h.damId) : undefined,
-          ]
-        : [undefined, undefined],
-    );
-  const gen1 = [sire, dam];
-  const gen2 = nextGen(gen1);
-  const gen3 = nextGen(gen2);
-
-  const counts = new Map<number, number>();
-  for (const h of [...gen1, ...gen2, ...gen3]) {
-    if (h?.id != null) counts.set(h.id, (counts.get(h.id) ?? 0) + 1);
-  }
-  const isDup = (h?: Horse) => !!h?.id && (counts.get(h.id) ?? 0) > 1;
-
-  return (
-    <div className="pedigree-scroll">
-      <div className="pedigree">
-        <div className="pedigree__col">
-          {gen1.map((h, i) => (
-            <PedigreeCell key={i} horse={h} duplicated={isDup(h)} />
-          ))}
-        </div>
-        <div className="pedigree__col">
-          {gen2.map((h, i) => (
-            <PedigreeCell key={i} horse={h} duplicated={isDup(h)} />
-          ))}
-        </div>
-        <div className="pedigree__col">
-          {gen3.map((h, i) => (
-            <PedigreeCell key={i} horse={h} duplicated={isDup(h)} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ActiveHorseCard({
-  horse,
-  byId,
-}: {
-  horse: Horse;
-  byId: Map<number, Horse>;
-}) {
-  const walkIndex = horse.ageWalks; // 直近まで進んだ回数
-  const distMarks = distanceAptitudeMarks(horse);
-  const surfMarks = surfaceAptitudeMarks(horse);
-  const fatigue = fatigueState(horse.fatigue);
-  const stageLabel = stageLabelForWalk(Math.max(1, walkIndex));
-
   return (
     <div className="card">
       <div className="horse-head">
@@ -333,66 +236,17 @@ function ActiveHorseCard({
             {horse.name} {horse.sex === 'male' ? '♂' : '♀'}
           </div>
           <div className="horse-sub">
-            {COAT_LABELS[horse.coat]} ・ {stageLabel} ・ {walkIndex}/
-            {CAREER_LENGTH_WALKS}回
+            {COAT_LABELS[horse.coat]} ・ {COURSE_PLAN_LABELS[horse.planCourse ?? 'turf']} ・
+            レース数 {RACE_COUNT_PREFERENCE_LABELS[horse.raceCountPreference ?? 'normal']}
           </div>
         </div>
       </div>
-
-      {horse.inbredAtBirth && (
-        <div className="notice" style={{ marginTop: 0 }}>
-          近親配合で生まれた一頭です。能力に伸びしろがある一方、気性は要注意かもしれません。
-        </div>
-      )}
-
-      <div className="stat-row">
-        <span className="stat">
-          <b>{TEMPERAMENT_LABELS[horse.temperament]}</b>
-          <span className="unit">気性</span>
-        </span>
-        <span className="stat">
-          <b>{RUNNING_STYLE_LABELS[horse.runningStyle]}</b>
-          <span className="unit">脚質</span>
-        </span>
-        <span className="stat">
-          <b>{horse.wins}</b>
-          <span className="unit">勝</span>
-        </span>
+      <div className="notice" style={{ marginTop: 0 }}>
+        出走待ちです。次にルートを歩き終えると、そのルートがまるごとこの馬の生涯(誕生〜
+        レース〜引退)になり、その場で結果が出ます。
       </div>
-
-      <span className={`fatigue-badge ${fatigue.cls}`}>{fatigue.label}</span>
-
-      <div className="apt-grid">
-        {(Object.keys(DISTANCE_APTITUDE_LABELS) as DistanceAptitude[]).map((k) => (
-          <span key={k} className="apt-chip">
-            {DISTANCE_APTITUDE_LABELS[k]} <b>{distMarks[k]}</b>
-          </span>
-        ))}
-        <span className="apt-chip">
-          芝 <b>{surfMarks.turf}</b>
-        </span>
-        <span className="apt-chip">
-          ダート <b>{surfMarks.dirt}</b>
-        </span>
-      </div>
-
-      <p className="hint">
-        成長型は引退するまでわかりません。じっくり付き合ってみてください。
-      </p>
-
       <h3 style={{ fontSize: 14, margin: '16px 0 8px' }}>血統表</h3>
       <PedigreeTable horse={horse} byId={byId} />
-
-      {horse.careerLog.length > 0 && (
-        <>
-          <h3 style={{ fontSize: 14, margin: '16px 0 8px' }}>キャリア記録</h3>
-          <ul className="career-log">
-            {[...horse.careerLog].reverse().map((e, i) => (
-              <CareerEntryRow key={i} entry={e} />
-            ))}
-          </ul>
-        </>
-      )}
     </div>
   );
 }
@@ -416,6 +270,13 @@ function RetiredHorseItem({ horse }: { horse: Horse }) {
         <div className="horse-sub">
           {COAT_LABELS[horse.coat]} ・ {GROWTH_TYPE_LABELS[horse.growthType]} ・{' '}
           {horse.wins}勝 {best && `・ ${DISTANCE_APTITUDE_LABELS[best]}向き`}
+        </div>
+        <div className="rank-row rank-row--compact">
+          <RankBadge rank={paramRank(horse.params.speed)} />
+          <RankBadge rank={paramRank(horse.params.stamina)} />
+          <RankBadge rank={paramRank(horse.params.power)} />
+          <RankBadge rank={paramRank(horse.params.guts)} />
+          <RankBadge rank={paramRank(horse.params.wisdom)} />
         </div>
       </div>
     </div>
@@ -446,7 +307,7 @@ export function StableScreen() {
   return (
     <div>
       {active ? (
-        <ActiveHorseCard horse={active} byId={byId} />
+        <PendingHorseCard horse={active} byId={byId} />
       ) : (
         <>
           {canBreed && (

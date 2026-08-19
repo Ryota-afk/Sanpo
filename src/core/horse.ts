@@ -1,22 +1,24 @@
-// 愛馬の誕生と、散歩1回分の調教反映。
+// 愛馬の誕生と、1回の散歩=1頭の生涯 のシミュレーション。
 //
 // 能力(HorseParams)は数値のまま UI に出さない。調教師コメントを通してのみ伝わる。
 
 import type {
   Coat,
+  CoursePlan,
   GrowthType,
   Horse,
   HorseCareerEntry,
   HorseParams,
   HorseSex,
   MoodFilter,
+  RaceCountPreference,
   RouteRecord,
   RunningStyle,
   Temperament,
 } from '../types';
 import { GROWTH_TYPE_LABELS } from '../types';
-import { CAREER_LENGTH_WALKS, CAREER_SCHEDULE, stageIndexForWalk } from './career';
-import { simulateRace, type RaceOutcome } from './race';
+import { buildLifeSchedule, resolveRaceCount, stageIndexForCheckpoint } from './career';
+import { simulateRace } from './race';
 
 // ── 誕生 ──────────────────────────────────────────
 
@@ -72,6 +74,44 @@ export function createHorse(name: string, sex: HorseSex): Horse {
   };
 }
 
+// ── ルートをチェックポイントに分割する ───────────────────
+
+/** 1チェックポイント分の「調教材料」。ルートを均等割りした近似値。 */
+interface CheckpointInput {
+  distanceM: number;
+  wayTypeBreakdown: Record<string, number>;
+  moodFilters: MoodFilter[];
+  crossingsCount: number;
+}
+
+/**
+ * ルート全体の集計値(道タイプ内訳・気分・横断歩道数)しか無いので、
+ * 区間ごとの正確な内訳は再現できない。代わりに、全体の比率をベースに
+ * チェックポイントごとランダムなブレを加えて割り振る近似で「今日はこの
+ * あたりが調教のメインだった」感を出す。
+ */
+function sliceRouteIntoCheckpoints(route: RouteRecord, n: number): CheckpointInput[] {
+  const bd = route.wayTypeBreakdown ?? {};
+  const totalCrossings = route.crossings?.length ?? 0;
+  const perCheckpointDistance = route.distanceM / n;
+
+  const checkpoints: CheckpointInput[] = [];
+  for (let i = 0; i < n; i++) {
+    const jitter = 0.7 + Math.random() * 0.6; // 0.7〜1.3
+    const wayTypeBreakdown: Record<string, number> = {};
+    for (const [k, v] of Object.entries(bd)) {
+      wayTypeBreakdown[k] = (v / n) * jitter;
+    }
+    checkpoints.push({
+      distanceM: perCheckpointDistance,
+      wayTypeBreakdown,
+      moodFilters: route.moodFilters.filter(() => Math.random() < 0.7),
+      crossingsCount: Math.round((totalCrossings / n) * (0.5 + Math.random())),
+    });
+  }
+  return checkpoints;
+}
+
 // ── 調教 ──────────────────────────────────────────
 
 // 成長型ごとの、各ステージ(育成期/2歳/3歳/4歳)での伸び方の倍率。
@@ -81,6 +121,13 @@ const GROWTH_MULT: Record<GrowthType, number[]> = {
   late: [0.6, 0.8, 1.2, 1.5],
   sustained: [1.0, 1.05, 1.1, 1.15],
 };
+
+// 1回の調教チェックポイントあたりの基準運動量(旧: 1回の散歩相当)。
+// チェックポイントは1ルートを細切れにしたもので距離が数百mしかないため、
+// 「質」(道タイプ比率・気分)だけを反映し、量はこの固定値を基準にする。
+// これによりレース数(=チェックポイント数)を増減しても、生涯トータルの
+// 成長量が距離だけで理不尽に薄まらない。
+const CHECKPOINT_TRAINING_BUDGET_KM = 1.6;
 
 interface TrainingEffect {
   deltas: HorseParams;
@@ -95,11 +142,10 @@ function pickMenuLabel(
   trackRatio: number,
   avenueRatio: number,
   moods: Set<MoodFilter>,
-  km: number,
 ): string {
   if (stepsRatio > 0.15) return '坂路調教';
   if (moods.has('waterside')) return 'プール調教';
-  if (moods.has('green') && km < 2) return '放牧';
+  if (moods.has('green')) return '放牧';
   if (trackRatio > 0.3) return 'ダートコース';
   if (avenueRatio > 0.3) return '芝コース追い';
   if (moods.has('residential')) return '周回コース';
@@ -108,17 +154,14 @@ function pickMenuLabel(
   return 'ウッドチップ調教';
 }
 
-// 既存の RouteRecord(気分フィルター・道タイプ内訳・横断歩道数)から、
-// そのまま調教メニューの効果を計算する。新しい入力 UI は要らない。
-function computeTrainingEffect(route: RouteRecord): TrainingEffect {
-  const totalM = Math.max(route.distanceM, 1);
-  const km = totalM / 1000;
-  const bd = route.wayTypeBreakdown ?? {};
+function computeTrainingEffect(checkpoint: CheckpointInput): TrainingEffect {
+  const totalM = Math.max(checkpoint.distanceM, 1);
+  const km = CHECKPOINT_TRAINING_BUDGET_KM;
+  const bd = checkpoint.wayTypeBreakdown;
   const stepsRatio = (bd.steps ?? 0) / totalM;
   const trackRatio = ((bd.track ?? 0) + (bd.path ?? 0)) / totalM;
   const avenueRatio = ((bd.primary ?? 0) + (bd.secondary ?? 0) + (bd.trunk ?? 0)) / totalM;
-  const moods = new Set(route.moodFilters);
-  const crossings = route.crossings?.length ?? 0;
+  const moods = new Set(checkpoint.moodFilters);
 
   const deltas: HorseParams = {
     speed: km * (0.5 + avenueRatio * 1.4),
@@ -127,12 +170,12 @@ function computeTrainingEffect(route: RouteRecord): TrainingEffect {
     guts: km * 0.3 + (moods.has('dark') ? km * 0.5 : 0),
     wisdom:
       km * 0.25 +
-      crossings * 0.15 +
+      checkpoint.crossingsCount * 0.15 +
       (moods.has('quiet') || moods.has('residential') ? km * 0.35 : 0),
   };
 
   let fatigueDelta = km * 4 + stepsRatio * 10;
-  if (moods.has('green')) fatigueDelta -= km * 6; // 放牧: 短めなら正味回復になる
+  if (moods.has('green')) fatigueDelta -= km * 6; // 放牧: 正味回復になる
   if (moods.has('waterside')) fatigueDelta -= km * 3;
 
   const turfMeters =
@@ -147,7 +190,7 @@ function computeTrainingEffect(route: RouteRecord): TrainingEffect {
   return {
     deltas,
     fatigueDelta,
-    menuLabel: pickMenuLabel(stepsRatio, trackRatio, avenueRatio, moods, km),
+    menuLabel: pickMenuLabel(stepsRatio, trackRatio, avenueRatio, moods),
     turfMeters,
     dirtMeters,
   };
@@ -181,14 +224,14 @@ function shiftTemperament(t: Temperament, dir: 1 | -1): Temperament {
   return TEMPERAMENT_ORDER[next];
 }
 
-/** 調教を1回分反映する。ageWalks・careerLog への追加は呼び出し元(processWalk)が行う。 */
+/** 調教を1回分反映する。ageWalks・careerLog への追加は呼び出し元が行う。 */
 function applyTraining(
   horse: Horse,
-  route: RouteRecord,
+  checkpoint: CheckpointInput,
+  stage: number,
 ): { horse: Horse; comment: string } {
-  const walkIndex = horse.ageWalks + 1;
-  const mult = GROWTH_MULT[horse.growthType][stageIndexForWalk(walkIndex)];
-  const effect = computeTrainingEffect(route);
+  const mult = GROWTH_MULT[horse.growthType][stage];
+  const effect = computeTrainingEffect(checkpoint);
   // 疲労が溜まっていると、調教の効果が半減する。
   const fatiguePenalty = horse.fatigue > 70 ? 0.5 : 1;
   const scale = mult * fatiguePenalty;
@@ -205,9 +248,9 @@ function applyTraining(
   const fatigue = Math.min(100, Math.max(0, horse.fatigue + effect.fatigueDelta));
 
   let temperament = horse.temperament;
-  if (route.moodFilters.includes('dark') && Math.random() < 0.12) {
+  if (checkpoint.moodFilters.includes('dark') && Math.random() < 0.12) {
     temperament = shiftTemperament(temperament, 1);
-  } else if (route.moodFilters.includes('green') && Math.random() < 0.12) {
+  } else if (checkpoint.moodFilters.includes('green') && Math.random() < 0.12) {
     temperament = shiftTemperament(temperament, -1);
   }
 
@@ -228,75 +271,87 @@ function applyTraining(
       temperament,
       turfExposureM: horse.turfExposureM + effect.turfMeters,
       dirtExposureM: horse.dirtExposureM + effect.dirtMeters,
-      totalDistanceM: horse.totalDistanceM + route.distanceM,
+      totalDistanceM: horse.totalDistanceM + checkpoint.distanceM,
     },
     comment,
   };
 }
 
-// ── 散歩1回分の反映(調教 or レース) ──────────────────
+// ── 生涯シミュレーション(散歩1回=1頭の生涯) ──────────────
 
-export interface WalkReport {
+export interface LifetimeResult {
+  /** 引退済みの最終状態。 */
   horse: Horse;
-  entry: HorseCareerEntry;
-  race?: RaceOutcome;
-  retired: boolean;
+  /** 今回の生涯で起きた出来事(誕生後〜引退まで、時系列)。 */
+  timeline: HorseCareerEntry[];
 }
 
-/** 散歩1回分を、愛馬のキャリアに反映する。 */
-export function processWalk(horse: Horse, route: RouteRecord): WalkReport {
-  const walkIndex = horse.ageWalks + 1;
-  const isRace = CAREER_SCHEDULE[walkIndex - 1] === 'race';
+/**
+ * 完了したルート1本ぶんを、愛馬の生涯まるごとに変換する。
+ * horse は誕生直後(ageWalks: 0, status: 'active')の状態を渡す。
+ */
+export function simulateLifetime(horse: Horse, route: RouteRecord): LifetimeResult {
+  const coursePlan: CoursePlan = horse.planCourse ?? 'turf';
+  const preference: RaceCountPreference = horse.raceCountPreference ?? 'normal';
+  const raceCount = resolveRaceCount(route.distanceM, preference);
+  const schedule = buildLifeSchedule(raceCount);
+  const checkpoints = sliceRouteIntoCheckpoints(route, schedule.length);
 
-  let updated: Horse;
-  let entry: HorseCareerEntry;
-  let race: RaceOutcome | undefined;
+  let current = horse;
+  let raceSlot = 0;
+  const timeline: HorseCareerEntry[] = [];
 
-  if (isRace) {
-    race = simulateRace(horse, walkIndex);
-    updated = {
-      ...horse,
-      fatigue: Math.min(100, horse.fatigue + 6),
-      wins: horse.wins + (race.placing === 1 ? 1 : 0),
-    };
-    entry = {
-      walkIndex,
-      date: new Date().toISOString(),
-      kind: 'race',
-      text: race.commentary,
-      raceName: race.raceName,
-      placing: race.placing,
-      fieldSize: race.fieldSize,
-    };
-  } else {
-    const trained = applyTraining(horse, route);
-    updated = trained.horse;
-    entry = {
-      walkIndex,
-      date: new Date().toISOString(),
-      kind: 'train',
-      text: trained.comment,
-    };
-  }
+  schedule.forEach((kind, i) => {
+    const walkIndex = i + 1;
+    if (kind === 'race') {
+      const race = simulateRace(current, raceSlot, raceCount, coursePlan);
+      raceSlot += 1;
+      current = {
+        ...current,
+        fatigue: Math.min(100, current.fatigue + 6),
+        wins: current.wins + (race.placing === 1 ? 1 : 0),
+      };
+      timeline.push({
+        walkIndex,
+        date: new Date().toISOString(),
+        kind: 'race',
+        text: race.commentary,
+        raceName: race.raceName,
+        placing: race.placing,
+        fieldSize: race.fieldSize,
+      });
+    } else {
+      const stage = stageIndexForCheckpoint(walkIndex, schedule.length);
+      const trained = applyTraining(current, checkpoints[i], stage);
+      current = trained.horse;
+      timeline.push({
+        walkIndex,
+        date: new Date().toISOString(),
+        kind: 'train',
+        text: trained.comment,
+      });
+    }
+  });
 
-  updated = { ...updated, ageWalks: walkIndex, careerLog: [...updated.careerLog, entry] };
+  current = {
+    ...current,
+    ageWalks: schedule.length,
+    careerLog: [...current.careerLog, ...timeline],
+  };
 
-  let retired = false;
-  if (walkIndex >= CAREER_LENGTH_WALKS) {
-    retired = true;
-    const revealEntry: HorseCareerEntry = {
-      walkIndex,
-      date: new Date().toISOString(),
-      kind: 'retire',
-      text: `現役を引退しました。成長型は「${GROWTH_TYPE_LABELS[updated.growthType]}」でした。通算 ${updated.wins}勝。`,
-    };
-    updated = {
-      ...updated,
-      status: 'retired',
-      growthRevealed: true,
-      careerLog: [...updated.careerLog, revealEntry],
-    };
-  }
+  const revealEntry: HorseCareerEntry = {
+    walkIndex: schedule.length,
+    date: new Date().toISOString(),
+    kind: 'retire',
+    text: `現役を引退しました。成長型は「${GROWTH_TYPE_LABELS[current.growthType]}」でした。通算 ${current.wins}勝。`,
+  };
+  timeline.push(revealEntry);
+  current = {
+    ...current,
+    status: 'retired',
+    growthRevealed: true,
+    careerLog: [...current.careerLog, revealEntry],
+  };
 
-  return { horse: updated, entry, race, retired };
+  return { horse: current, timeline };
 }

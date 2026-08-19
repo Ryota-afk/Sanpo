@@ -1,6 +1,14 @@
 import Dexie, { type Table } from 'dexie';
-import type { Horse, HorseSex, Place, RouteRecord, Settings } from '../types';
-import { createHorse, processWalk, type WalkReport } from '../core/horse';
+import type {
+  CoursePlan,
+  Horse,
+  HorseSex,
+  Place,
+  RaceCountPreference,
+  RouteRecord,
+  Settings,
+} from '../types';
+import { createHorse, simulateLifetime, type LifetimeResult } from '../core/horse';
 import { createFoal, createIntroAncestor } from '../core/breeding';
 
 /** Overpass 取得結果のキャッシュエントリ。 */
@@ -148,19 +156,20 @@ export async function getActiveHorse(): Promise<Horse | undefined> {
 }
 
 /**
- * ルート完了時に呼ぶ。現役の愛馬がいれば、その散歩をキャリアに反映する
- * (調教 or レース)。愛馬がいなければ何もせず null を返す。
+ * ルート完了時に呼ぶ。出走待ちの愛馬がいれば、歩き終えたルートを
+ * まるごとその馬の生涯(誕生〜引退)として一気に解決する。
+ * 愛馬がいなければ何もせず null を返す。
  */
 export async function completeWalkForHorse(
   routeId: number,
-): Promise<WalkReport | null> {
+): Promise<LifetimeResult | null> {
   const route = await db.routes.get(routeId);
   if (!route) return null;
   const horse = await getActiveHorse();
   if (!horse || horse.id == null) return null;
-  const report = processWalk(horse, route);
-  await db.horses.put({ ...report.horse, id: horse.id });
-  return report;
+  const result = simulateLifetime(horse, route);
+  await db.horses.put({ ...result.horse, id: horse.id });
+  return result;
 }
 
 // ── 血統(祖先の自動生成・配合) ─────────────────────
@@ -189,11 +198,19 @@ async function createAncestorChain(
 export async function addHorseWithPedigree(
   name: string,
   sex: HorseSex,
+  coursePlan: CoursePlan,
+  raceCountPreference: RaceCountPreference,
 ): Promise<number> {
   return db.transaction('rw', db.horses, async () => {
     const sireId = await createAncestorChain('male', 2);
     const damId = await createAncestorChain('female', 2);
-    return db.horses.add({ ...createHorse(name, sex), sireId, damId });
+    return db.horses.add({
+      ...createHorse(name, sex),
+      sireId,
+      damId,
+      planCourse: coursePlan,
+      raceCountPreference,
+    });
   });
 }
 
@@ -234,6 +251,8 @@ export async function breedHorses(
   name: string,
   sireId: number,
   damId: number,
+  coursePlan: CoursePlan,
+  raceCountPreference: RaceCountPreference,
 ): Promise<number> {
   const [sire, dam] = await Promise.all([db.horses.get(sireId), db.horses.get(damId)]);
   if (!sire || !dam) throw new Error('親馬が見つかりませんでした。');
@@ -244,7 +263,7 @@ export async function breedHorses(
   const inbred = [...sireAncestors].some((id) => damAncestors.has(id));
   const sex: HorseSex = Math.random() < 0.5 ? 'male' : 'female';
   const foal = createFoal(name, sex, sire, dam, inbred);
-  return db.horses.add(foal);
+  return db.horses.add({ ...foal, planCourse: coursePlan, raceCountPreference });
 }
 
 /** 自動採番の id を除いたコピーを返す(取り込み時に id を振り直すため)。 */

@@ -7,8 +7,10 @@ import { HistoryScreen } from './screens/HistoryScreen';
 import { PlacesScreen } from './screens/PlacesScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { StableScreen } from './screens/StableScreen';
+import { LifetimeScreen } from './screens/LifetimeScreen';
 import { saveRoute } from './db/db';
 import { routeRecordToCandidate } from './core/routeRecord';
+import type { LifetimeResult } from './core/horse';
 import type {
   LatLng,
   MoodFilter,
@@ -24,6 +26,7 @@ type Screen =
   | 'history'
   | 'places'
   | 'stable'
+  | 'lifetime'
   | 'settings';
 
 interface ProposalContext {
@@ -48,6 +51,7 @@ const HEADER_TITLES: Record<Screen, string> = {
   history: '履歴',
   places: '場所',
   stable: '🐴 サンポ牧場',
+  lifetime: '🎓 生涯の記録',
   settings: '設定',
 };
 
@@ -60,6 +64,7 @@ export function App() {
   const [routeId, setRouteId] = useState<number | null>(null);
   const [detailCtx, setDetailCtx] = useState<DetailContext | null>(null);
   const [cameFromHistory, setCameFromHistory] = useState(false);
+  const [lifetimeResult, setLifetimeResult] = useState<LifetimeResult | null>(null);
 
   // 設定読込中。
   if (settings === undefined) {
@@ -131,15 +136,25 @@ export function App() {
     setScreen('detail');
   };
 
-  const handleCompleted = (trainedHorse: boolean) => {
+  const handleCompleted = (result: LifetimeResult | null) => {
     setResult(null);
     setContext(null);
     setSelected(null);
     setRouteId(null);
     setDetailCtx(null);
     setCameFromHistory(false);
-    // 現役の愛馬がいれば、調教/レースの結果をすぐ見られるよう牧場タブへ。
-    setScreen(trainedHorse ? 'stable' : 'history');
+    // 出走待ちの愛馬がいれば、その生涯の結果をその場で振り返る画面へ。
+    if (result) {
+      setLifetimeResult(result);
+      setScreen('lifetime');
+    } else {
+      setScreen('history');
+    }
+  };
+
+  const handleLifetimeDone = () => {
+    setLifetimeResult(null);
+    setScreen('stable');
   };
 
   return (
@@ -180,6 +195,10 @@ export function App() {
         {screen === 'places' && <PlacesScreen />}
 
         {screen === 'stable' && <StableScreen />}
+
+        {screen === 'lifetime' && lifetimeResult && (
+          <LifetimeScreen result={lifetimeResult} onDone={handleLifetimeDone} />
+        )}
 
         {screen === 'settings' && (
           <SettingsScreen
@@ -222,7 +241,7 @@ export function App() {
           場所
         </button>
         <button
-          className={screen === 'stable' ? 'active' : ''}
+          className={screen === 'stable' || screen === 'lifetime' ? 'active' : ''}
           onClick={() => setScreen('stable')}
         >
           <span className="nav-icon">🐴</span>
