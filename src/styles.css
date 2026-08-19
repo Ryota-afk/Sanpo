@@ -605,11 +605,11 @@ input[type='range'] {
 
 .pedigree {
   display: flex;
+  align-items: stretch;
   gap: 1px;
   background: var(--border);
   border: 1px solid var(--border);
   min-width: 520px;
-  height: 280px;
   border-radius: 8px;
   overflow: hidden;
 }
@@ -624,13 +624,16 @@ input[type='range'] {
 
 .pedigree__cell {
   flex: 1;
+  /* 一番深い世代(曾祖父母、8マス)でも馬名2行が収まる高さを確保する。
+     世代ごとに列を分けて flex:1 で均等割りしているだけなので、ここを
+     基準に浅い世代の列は align-items:stretch で自動的に高くなる。 */
+  min-height: 46px;
   background: #fff;
   padding: 6px 10px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 2px;
-  overflow: hidden;
 }
 
 .pedigree__cell--intro {
