@@ -13,5 +13,7 @@ export function routeRecordToCandidate(record: RouteRecord): RouteCandidate {
     overlapRate: record.overlapRateAtSelection,
     wayTypeBreakdown: record.wayTypeBreakdown ?? {},
     crossings: record.crossings ?? [],
+    moodBreakdown: record.moodBreakdown ?? {},
+    landmarks: record.landmarks ?? [],
   };
 }

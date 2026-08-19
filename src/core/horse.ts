@@ -12,6 +12,7 @@ import type {
   HorseSex,
   MoodFilter,
   RaceCountPreference,
+  RouteLandmarkKind,
   RouteRecord,
   RunningStyle,
   Temperament,
@@ -82,18 +83,30 @@ interface CheckpointInput {
   wayTypeBreakdown: Record<string, number>;
   moodFilters: MoodFilter[];
   crossingsCount: number;
+  /** このチェックポイントの区間で実際に通過したランドマーク(位置つき)。 */
+  landmarks: RouteLandmarkKind[];
 }
 
 /**
- * ルート全体の集計値(道タイプ内訳・気分・横断歩道数)しか無いので、
- * 区間ごとの正確な内訳は再現できない。代わりに、全体の比率をベースに
- * チェックポイントごとランダムなブレを加えて割り振る近似で「今日はこの
- * あたりが調教のメインだった」感を出す。
+ * 道タイプ内訳(wayTypeBreakdown)は区間ごとの正確な内訳が無いため、
+ * 全体の比率にランダムなブレを加えて割り振る近似のまま。
+ *
+ * 気分(moodBreakdown)は、実際に通った道路タグから来る実測の構成比なので、
+ * 「その気分に触れていた割合」に応じてチェックポイントごと確率的に割り振る。
+ * moodBreakdown が無い旧データ(この改修前に保存されたルート)は、
+ * これまで通りユーザーが選んだ moodFilters をそのまま流用する。
+ *
+ * ランドマーク(コンビニ・川沿い)は実座標での近接判定から来る位置つきの
+ * 事実なので、近似せず、通過した累積距離がそのチェックポイントの区間に
+ * 収まるかどうかで厳密に割り振る。
  */
 function sliceRouteIntoCheckpoints(route: RouteRecord, n: number): CheckpointInput[] {
   const bd = route.wayTypeBreakdown ?? {};
   const totalCrossings = route.crossings?.length ?? 0;
+  const totalM = Math.max(route.distanceM, 1);
   const perCheckpointDistance = route.distanceM / n;
+  const moodBd = route.moodBreakdown;
+  const landmarks = route.landmarks ?? [];
 
   const checkpoints: CheckpointInput[] = [];
   for (let i = 0; i < n; i++) {
@@ -102,11 +115,28 @@ function sliceRouteIntoCheckpoints(route: RouteRecord, n: number): CheckpointInp
     for (const [k, v] of Object.entries(bd)) {
       wayTypeBreakdown[k] = (v / n) * jitter;
     }
+
+    let moodFilters: MoodFilter[];
+    if (moodBd && Object.keys(moodBd).length > 0) {
+      moodFilters = (Object.entries(moodBd) as [MoodFilter, number][])
+        .filter(([, meters]) => Math.random() < Math.min(1, (meters / totalM) * 1.3))
+        .map(([mood]) => mood);
+    } else {
+      moodFilters = route.moodFilters.filter(() => Math.random() < 0.7);
+    }
+
+    const rangeStart = i * perCheckpointDistance;
+    const rangeEnd = (i + 1) * perCheckpointDistance;
+    const hitLandmarks = landmarks
+      .filter((l) => l.atDistanceM >= rangeStart && l.atDistanceM < rangeEnd)
+      .map((l) => l.kind);
+
     checkpoints.push({
       distanceM: perCheckpointDistance,
       wayTypeBreakdown,
-      moodFilters: route.moodFilters.filter(() => Math.random() < 0.7),
+      moodFilters,
       crossingsCount: Math.round((totalCrossings / n) * (0.5 + Math.random())),
+      landmarks: hitLandmarks,
     });
   }
   return checkpoints;
@@ -135,6 +165,33 @@ interface TrainingEffect {
   menuLabel: string;
   turfMeters: number;
   dirtMeters: number;
+  landmarks: RouteLandmarkKind[];
+}
+
+// ルート上で実際に通過したランドマークの効果。統計的な近似ではなく、
+// 実座標での近接判定(コンビニ・川沿い)に基づく確定イベント。
+const LANDMARK_PHRASES: Record<RouteLandmarkKind, string> = {
+  convenience: 'コンビニの前でひと息つきました',
+  river: '河川敷を気持ちよく走りました',
+};
+
+function applyLandmarkEffect(
+  deltas: HorseParams,
+  fatigueDelta: number,
+  kind: RouteLandmarkKind,
+  km: number,
+): { deltas: HorseParams; fatigueDelta: number } {
+  if (kind === 'convenience') {
+    return {
+      deltas: { ...deltas, wisdom: deltas.wisdom + km * 0.4 },
+      fatigueDelta: fatigueDelta - km * 3,
+    };
+  }
+  // river
+  return {
+    deltas: { ...deltas, stamina: deltas.stamina + km * 0.5 },
+    fatigueDelta: fatigueDelta - km * 2,
+  };
 }
 
 function pickMenuLabel(
@@ -163,7 +220,7 @@ function computeTrainingEffect(checkpoint: CheckpointInput): TrainingEffect {
   const avenueRatio = ((bd.primary ?? 0) + (bd.secondary ?? 0) + (bd.trunk ?? 0)) / totalM;
   const moods = new Set(checkpoint.moodFilters);
 
-  const deltas: HorseParams = {
+  let deltas: HorseParams = {
     speed: km * (0.5 + avenueRatio * 1.4),
     stamina: km * (0.6 + stepsRatio * 1.6),
     power: km * (0.4 + stepsRatio * 1.1 + trackRatio * 0.9),
@@ -177,6 +234,13 @@ function computeTrainingEffect(checkpoint: CheckpointInput): TrainingEffect {
   let fatigueDelta = km * 4 + stepsRatio * 10;
   if (moods.has('green')) fatigueDelta -= km * 6; // 放牧: 正味回復になる
   if (moods.has('waterside')) fatigueDelta -= km * 3;
+
+  // 実際に通過したランドマークは、統計的な気分よりさらに上乗せで効く。
+  for (const kind of checkpoint.landmarks) {
+    const applied = applyLandmarkEffect(deltas, fatigueDelta, kind, km);
+    deltas = applied.deltas;
+    fatigueDelta = applied.fatigueDelta;
+  }
 
   const turfMeters =
     (bd.primary ?? 0) +
@@ -193,6 +257,7 @@ function computeTrainingEffect(checkpoint: CheckpointInput): TrainingEffect {
     menuLabel: pickMenuLabel(stepsRatio, trackRatio, avenueRatio, moods),
     turfMeters,
     dirtMeters,
+    landmarks: checkpoint.landmarks,
   };
 }
 
@@ -260,8 +325,12 @@ function applyTraining(
       : fatigueBefore < 20
         ? ' 状態は良さそうです。'
         : '';
+  // 実際に通過したランドマークがあれば、そのエピソードを主役にする。
+  const opening = effect.landmarks[0]
+    ? LANDMARK_PHRASES[effect.landmarks[0]]
+    : `${effect.menuLabel}で調教しました`;
   const comment =
-    `${effect.menuLabel}で調教しました。${STAT_COMMENTS[topStat(effect.deltas)]}。${fatiguePhrase}`.trim();
+    `${opening}。${STAT_COMMENTS[topStat(effect.deltas)]}。${fatiguePhrase}`.trim();
 
   return {
     horse: {
@@ -304,7 +373,13 @@ export function simulateLifetime(horse: Horse, route: RouteRecord): LifetimeResu
   schedule.forEach((kind, i) => {
     const walkIndex = i + 1;
     if (kind === 'race') {
-      const race = simulateRace(current, raceSlot, raceCount, coursePlan);
+      const race = simulateRace(
+        current,
+        raceSlot,
+        raceCount,
+        coursePlan,
+        checkpoints[i].landmarks,
+      );
       raceSlot += 1;
       current = {
         ...current,

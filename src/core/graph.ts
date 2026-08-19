@@ -20,6 +20,9 @@ export interface EdgeData {
   highway: string;
   lengthM: number;
   moods: Set<MoodFilter>;
+  /** ルート生成時、実際に通ったエッジからランドマークを検出するための近接フラグ。 */
+  nearConvenience: boolean;
+  nearRiver: boolean;
 }
 
 /** ノード id -> 座標。ngraph ノードの data にも保持する。 */
@@ -36,6 +39,8 @@ export interface RoadGraph {
 // 近いとみなす距離(メートル)。
 const LAMP_RADIUS_M = 30; // 街灯がこの範囲にあれば「明るい」
 const WATER_RADIUS_M = 45; // 水辺がこの範囲にあれば「水辺の道」
+const CONVENIENCE_RADIUS_M = 40; // コンビニがこの範囲にあれば「通過した」とみなす
+const RIVER_RADIUS_M = 45; // 川沿いランドマーク判定用(water とは別に river/stream/canal のみ)
 
 const GREEN_LEISURE = new Set([
   'park',
@@ -86,13 +91,16 @@ function wayCoords(
   return coords;
 }
 
-/** 分類に使う周辺データ(住宅街/緑/水辺/街灯)をまとめて構築する。 */
+/** 分類に使う周辺データ(住宅街/緑/水辺/街灯/コンビニ)をまとめて構築する。 */
 interface FeatureContext {
   residentialPolys: PolygonWithBBox[];
   greenPolys: PolygonWithBBox[];
   greenLine: PointGrid; // 並木(tree_row)など線状の緑
   water: PointGrid;
   lamps: PointGrid;
+  convenience: PointGrid;
+  /** water とは別に、river/stream/canal(河川)のみの線。「川沿い」ランドマーク判定用。 */
+  riverLine: PointGrid;
 }
 
 function buildFeatureContext(
@@ -106,6 +114,8 @@ function buildFeatureContext(
   const greenLine = new PointGrid(WATER_RADIUS_M, refLat);
   const water = new PointGrid(WATER_RADIUS_M, refLat);
   const lamps = new PointGrid(LAMP_RADIUS_M, refLat);
+  const convenience = new PointGrid(CONVENIENCE_RADIUS_M, refLat);
+  const riverLine = new PointGrid(RIVER_RADIUS_M, refLat);
 
   for (const way of ways) {
     const t = way.tags;
@@ -131,16 +141,24 @@ function buildFeatureContext(
     if (isWaterWay(way)) {
       for (const c of wayCoords(way, nodeCoords)) water.add(c);
     }
-  }
 
-  // 街灯は独立ノードとして取得される。
-  for (const el of elements) {
-    if (el.type === 'node' && el.tags?.highway === 'street_lamp') {
-      lamps.add({ lat: el.lat, lng: el.lon });
+    if (t.waterway && WATER_WATERWAY.has(t.waterway)) {
+      for (const c of wayCoords(way, nodeCoords)) riverLine.add(c);
     }
   }
 
-  return { residentialPolys, greenPolys, greenLine, water, lamps };
+  // 街灯・コンビニは独立ノードとして取得される。
+  for (const el of elements) {
+    if (el.type !== 'node' || !el.tags) continue;
+    if (el.tags.highway === 'street_lamp') {
+      lamps.add({ lat: el.lat, lng: el.lon });
+    }
+    if (el.tags.shop === 'convenience') {
+      convenience.add({ lat: el.lat, lng: el.lon });
+    }
+  }
+
+  return { residentialPolys, greenPolys, greenLine, water, lamps, convenience, riverLine };
 }
 
 /**
@@ -217,7 +235,14 @@ export function buildGraph(data: OverpassResponse): RoadGraph {
       });
 
       // 無向グラフとして扱うため、両方向にリンクを張る。
-      const edgeData: EdgeData = { wayId, highway, lengthM, moods };
+      const edgeData: EdgeData = {
+        wayId,
+        highway,
+        lengthM,
+        moods,
+        nearConvenience: features.convenience.hasWithin(mid),
+        nearRiver: features.riverLine.hasWithin(mid),
+      };
       graph.addLink(aId, bId, edgeData);
     }
   }

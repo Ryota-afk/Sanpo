@@ -46,6 +46,18 @@ export const ALL_MOODS: MoodFilter[] = [
 ];
 
 /**
+ * ルート上で実際に通過した「地物」。コンビニ・川沿いなど、統計的な推測ではなく
+ * 実座標での近接判定から来る、位置つきの出来事。
+ */
+export type RouteLandmarkKind = 'convenience' | 'river';
+
+export interface RouteLandmark {
+  /** スタートからの累積距離(m)。 */
+  atDistanceM: number;
+  kind: RouteLandmarkKind;
+}
+
+/**
  * ルートの状態。
  * - in_progress: 候補として選択し、これから(または現在)歩いている途中。
  *   選択した時点で保存されるため、ブラウザを閉じても消えない。
@@ -68,6 +80,10 @@ export interface RouteRecord {
   overlapRateAtSelection: number; // 選択時点の被り率(%)
   crossings?: [number, number][]; // ルート上の横断歩道の座標 [lat, lng]
   wayTypeBreakdown?: Record<string, number>; // 通過した道タイプの内訳(道タイプ→距離m)
+  /** 通過した気分タグの内訳(気分→距離m)。ユーザーが選んだ気分ではなく、実際の道の構成。 */
+  moodBreakdown?: Partial<Record<MoodFilter, number>>;
+  /** ルート上で通過したコンビニ・川沿いなどの地物(位置つき)。 */
+  landmarks?: RouteLandmark[];
 }
 
 /** 登録した場所(自宅・バイト先など)。 */
@@ -99,6 +115,10 @@ export interface RouteCandidate {
   wayTypeBreakdown: Record<string, number>;
   /** ルート上の横断歩道の座標 [lat, lng]。 */
   crossings: [number, number][];
+  /** 通過した気分タグの内訳(気分→距離m)。実際の道の構成から算出。 */
+  moodBreakdown: Partial<Record<MoodFilter, number>>;
+  /** ルート上で通過したコンビニ・川沿いなどの地物(位置つき)。 */
+  landmarks: RouteLandmark[];
 }
 
 /** ルート提案の結果。 */

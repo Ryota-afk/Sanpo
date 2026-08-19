@@ -1,6 +1,6 @@
 // レースの発走。予想も馬券もなく、これまでの調教の答え合わせとして結果を出す。
 
-import type { CoursePlan, Horse } from '../types';
+import type { CoursePlan, Horse, RouteLandmarkKind } from '../types';
 import { staminaSpeedRatio } from './career';
 
 export interface RaceOutcome {
@@ -102,25 +102,38 @@ function fitForSurface(horse: Horse, surface: 'turf' | 'dirt'): number {
   return 0.85 + matchRatio * 0.3;
 }
 
-function buildCommentary(name: string, placing: number, fieldSize: number): string {
+// レース経路が実際に通ったランドマーク。能力には影響させず、実況の一言だけに使う。
+const LANDMARK_RACE_PHRASES: Record<RouteLandmarkKind, string> = {
+  convenience: 'コンビニの前を走り抜けて、',
+  river: '河川敷の直線で、',
+};
+
+function buildCommentary(
+  name: string,
+  placing: number,
+  fieldSize: number,
+  landmark?: RouteLandmarkKind,
+): string {
+  const prefix = landmark ? LANDMARK_RACE_PHRASES[landmark] : '';
   if (placing === 1) {
-    return `最後の直線、${name}が一頭だけ違う脚を使った! そのまま押し切って一着!`;
+    return `${prefix}最後の直線、${name}が一頭だけ違う脚を使った! そのまま押し切って一着!`;
   }
   if (placing <= 3) {
-    return `${name}、直線でよく伸びました。あと一歩及ばず${placing}着。`;
+    return `${prefix}${name}、直線でよく伸びました。あと一歩及ばず${placing}着。`;
   }
   if (placing <= Math.ceil(fieldSize / 2)) {
-    return `${name}は中団のまま。届かず${placing}着でレースを終えました。`;
+    return `${prefix}${name}は中団のまま。届かず${placing}着でレースを終えました。`;
   }
-  return `${name}、今日は流れに乗れませんでした。${placing}着。次走に期待です。`;
+  return `${prefix}${name}、今日は流れに乗れませんでした。${placing}着。次走に期待です。`;
 }
 
-/** slot(0始まり、レース中何走目か)のレースを発走する。 */
+/** slot(0始まり、レース中何走目か)のレースを発走する。landmarks は実況の演出のみに使う。 */
 export function simulateRace(
   horse: Horse,
   slot: number,
   totalRaces: number,
   coursePlan: CoursePlan,
+  landmarks: RouteLandmarkKind[] = [],
 ): RaceOutcome {
   const spec = courseSpecFor(coursePlan);
   const distanceM = spec.distanceForSlot(slot, totalRaces);
@@ -148,6 +161,6 @@ export function simulateRace(
     distanceM,
     placing,
     fieldSize: FIELD_SIZE,
-    commentary: buildCommentary(horse.name, placing, FIELD_SIZE),
+    commentary: buildCommentary(horse.name, placing, FIELD_SIZE, landmarks[0]),
   };
 }

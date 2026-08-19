@@ -4,6 +4,8 @@ import type {
   MoodFilter,
   ProposalResult,
   RouteCandidate,
+  RouteLandmark,
+  RouteLandmarkKind,
   LatLng,
 } from '../types';
 import type { EdgeData, NodeData, RoadGraph } from './graph';
@@ -46,6 +48,8 @@ interface RawCandidate {
   distanceM: number;
   wayTypeBreakdown: Record<string, number>;
   crossings: [number, number][];
+  moodBreakdown: Partial<Record<MoodFilter, number>>;
+  landmarks: RouteLandmark[];
 }
 
 /** リンクのメタデータへ安全にアクセスする。 */
@@ -83,6 +87,14 @@ function buildRawCandidate(
   const wayIdSet = new Set<string>();
   const breakdown: Record<string, number> = {};
   const crossings: [number, number][] = [];
+  const moodBreakdown: Partial<Record<MoodFilter, number>> = {};
+  const landmarks: RouteLandmark[] = [];
+  // ランドマークは「近接圏に入った瞬間」だけ記録する(同じコンビニ沿いの
+  // 複数エッジで何度も重複記録しないため、立ち上がりエッジのみ検出する)。
+  const wasNear: Record<RouteLandmarkKind, boolean> = {
+    convenience: false,
+    river: false,
+  };
   let distanceM = 0;
 
   const addCrossingIfAny = (node: Node<NodeData>) => {
@@ -102,10 +114,23 @@ function buildRawCandidate(
     addCrossingIfAny(nodes[i]);
     if (!link) continue;
     const data = linkData(link);
+
+    const registerLandmark = (kind: RouteLandmarkKind, near: boolean) => {
+      if (near && !wasNear[kind]) {
+        landmarks.push({ atDistanceM: distanceM, kind });
+      }
+      wasNear[kind] = near;
+    };
+    registerLandmark('convenience', data.nearConvenience);
+    registerLandmark('river', data.nearRiver);
+
     distanceM += data.lengthM;
     edges.push({ wayId: data.wayId, lengthM: data.lengthM });
     wayIdSet.add(data.wayId);
     breakdown[data.highway] = (breakdown[data.highway] ?? 0) + data.lengthM;
+    for (const mood of data.moods) {
+      moodBreakdown[mood] = (moodBreakdown[mood] ?? 0) + data.lengthM;
+    }
   }
 
   return {
@@ -115,6 +140,8 @@ function buildRawCandidate(
     distanceM,
     wayTypeBreakdown: breakdown,
     crossings,
+    moodBreakdown,
+    landmarks,
   };
 }
 
@@ -238,6 +265,8 @@ export function proposeRoutes(params: ProposeParams): ProposalResult {
       overlapRate,
       wayTypeBreakdown: c.wayTypeBreakdown,
       crossings: c.crossings,
+      moodBreakdown: c.moodBreakdown,
+      landmarks: c.landmarks,
     };
   });
 

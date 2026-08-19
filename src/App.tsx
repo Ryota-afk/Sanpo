@@ -113,6 +113,8 @@ export function App() {
       overlapRateAtSelection: candidate.overlapRate,
       crossings: candidate.crossings,
       wayTypeBreakdown: candidate.wayTypeBreakdown,
+      moodBreakdown: candidate.moodBreakdown,
+      landmarks: candidate.landmarks,
     };
     const id = await saveRoute(record);
     setSelected(candidate);

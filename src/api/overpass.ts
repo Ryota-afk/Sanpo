@@ -38,7 +38,7 @@ const REQUEST_TIMEOUT_MS = 30000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // クエリ内容(取得タグ)を変えたらこの版数を上げる。古いキャッシュを無効化して再取得させる。
-const QUERY_SCHEMA_VERSION = 3;
+const QUERY_SCHEMA_VERSION = 4;
 
 /**
  * バウンディングボックスから安定したキャッシュキーを作る。
@@ -58,6 +58,7 @@ function cacheKey(bbox: BBox): string {
  * - 街灯ノード highway=street_lamp(明るい/暗いの精度向上)
  * - 公園・緑地・並木(緑の多い道)
  * - 河川・水域(水辺の道)
+ * - コンビニ(shop=convenience。ルート上のランドマーク判定用)
  */
 function buildQuery(bbox: BBox): string {
   const b = `${bbox.south},${bbox.west},${bbox.north},${bbox.east}`;
@@ -73,6 +74,7 @@ function buildQuery(bbox: BBox): string {
   way["natural"~"^(wood|scrub|heath|grassland|tree_row)$"](${b});
   way["natural"="water"](${b});
   way["waterway"~"^(river|stream|canal|riverbank)$"](${b});
+  node["shop"="convenience"](${b});
 );
 (._;>;);
 out body;`;
