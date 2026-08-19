@@ -31,7 +31,7 @@ const COAT_TABLE: [Coat, number][] = [
   ['shiro', 0.4],
 ];
 
-function pick<T>(arr: readonly T[]): T {
+export function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
@@ -45,9 +45,9 @@ export function rollCoat(): Coat {
   return COAT_TABLE[0][0];
 }
 
-const TEMPERAMENTS: Temperament[] = ['calm', 'gentle', 'spirited', 'difficult', 'fierce'];
-const RUNNING_STYLES: RunningStyle[] = ['front', 'stalk', 'chase', 'closer'];
-const GROWTH_TYPES: GrowthType[] = ['early', 'normal', 'late', 'sustained'];
+export const TEMPERAMENTS: Temperament[] = ['calm', 'gentle', 'spirited', 'difficult', 'fierce'];
+export const RUNNING_STYLES: RunningStyle[] = ['front', 'stalk', 'chase', 'closer'];
+export const GROWTH_TYPES: GrowthType[] = ['early', 'normal', 'late', 'sustained'];
 
 export function createHorse(name: string, sex: HorseSex): Horse {
   return {
@@ -68,6 +68,7 @@ export function createHorse(name: string, sex: HorseSex): Horse {
     totalDistanceM: 0,
     wins: 0,
     careerLog: [],
+    origin: 'bred',
   };
 }
 

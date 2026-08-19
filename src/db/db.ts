@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
-import type { Horse, Place, RouteRecord, Settings } from '../types';
-import { processWalk, type WalkReport } from '../core/horse';
+import type { Horse, HorseSex, Place, RouteRecord, Settings } from '../types';
+import { createHorse, processWalk, type WalkReport } from '../core/horse';
+import { createFoal, createIntroAncestor } from '../core/breeding';
 
 /** Overpass 取得結果のキャッシュエントリ。 */
 export interface OverpassCacheEntry {
@@ -146,11 +147,6 @@ export async function getActiveHorse(): Promise<Horse | undefined> {
   return db.horses.where('status').equals('active').first();
 }
 
-/** 誕生した愛馬を保存する。 */
-export async function addHorse(horse: Horse): Promise<number> {
-  return db.horses.add(horse);
-}
-
 /**
  * ルート完了時に呼ぶ。現役の愛馬がいれば、その散歩をキャリアに反映する
  * (調教 or レース)。愛馬がいなければ何もせず null を返す。
@@ -165,6 +161,90 @@ export async function completeWalkForHorse(
   const report = processWalk(horse, route);
   await db.horses.put({ ...report.horse, id: horse.id });
   return report;
+}
+
+// ── 血統(祖先の自動生成・配合) ─────────────────────
+
+/**
+ * 血統表の穴埋め用に、祖先を depth+1 世代分連鎖生成する
+ * (depth=2 なら 親・祖父母・曾祖父母の3世代=14頭)。
+ */
+async function createAncestorChain(
+  sex: HorseSex,
+  remainingDepth: number,
+): Promise<number> {
+  const sireId =
+    remainingDepth > 0 ? await createAncestorChain('male', remainingDepth - 1) : undefined;
+  const damId =
+    remainingDepth > 0
+      ? await createAncestorChain('female', remainingDepth - 1)
+      : undefined;
+  return db.horses.add({ ...createIntroAncestor(sex), sireId, damId });
+}
+
+/**
+ * 血統の無い新しい愛馬を迎える。3世代分の祖先(導入血統)を自動生成して配る。
+ * これにより、最初の一頭から血統表が意味を持つ。
+ */
+export async function addHorseWithPedigree(
+  name: string,
+  sex: HorseSex,
+): Promise<number> {
+  return db.transaction('rw', db.horses, async () => {
+    const sireId = await createAncestorChain('male', 2);
+    const damId = await createAncestorChain('female', 2);
+    return db.horses.add({ ...createHorse(name, sex), sireId, damId });
+  });
+}
+
+/**
+ * 配合相手として選べる引退馬を性別で取得する。
+ * 血統表の穴埋め用に自動生成された祖先(origin: 'intro')は除く。
+ */
+export async function getBreedingCandidates(sex: HorseSex): Promise<Horse[]> {
+  const retired = await db.horses.where('status').equals('retired').toArray();
+  return retired.filter((h) => h.sex === sex && (h.origin ?? 'bred') === 'bred');
+}
+
+/** horseId から遡って depth 世代以内の祖先(自分自身を含む)の id 集合を返す。 */
+async function ancestorIdSet(rootId: number, depth: number): Promise<Set<number>> {
+  const result = new Set<number>([rootId]);
+  let frontier = [rootId];
+  for (let g = 0; g < depth && frontier.length > 0; g++) {
+    const horses = await db.horses.bulkGet(frontier);
+    const next: number[] = [];
+    for (const h of horses) {
+      if (!h) continue;
+      if (h.sireId != null) {
+        result.add(h.sireId);
+        next.push(h.sireId);
+      }
+      if (h.damId != null) {
+        result.add(h.damId);
+        next.push(h.damId);
+      }
+    }
+    frontier = next;
+  }
+  return result;
+}
+
+/** 2頭を配合し、仔馬を新しい現役馬として迎える。 */
+export async function breedHorses(
+  name: string,
+  sireId: number,
+  damId: number,
+): Promise<number> {
+  const [sire, dam] = await Promise.all([db.horses.get(sireId), db.horses.get(damId)]);
+  if (!sire || !dam) throw new Error('親馬が見つかりませんでした。');
+  const [sireAncestors, damAncestors] = await Promise.all([
+    ancestorIdSet(sireId, 4),
+    ancestorIdSet(damId, 4),
+  ]);
+  const inbred = [...sireAncestors].some((id) => damAncestors.has(id));
+  const sex: HorseSex = Math.random() < 0.5 ? 'male' : 'female';
+  const foal = createFoal(name, sex, sire, dam, inbred);
+  return db.horses.add(foal);
 }
 
 /** 自動採番の id を除いたコピーを返す(取り込み時に id を振り直すため)。 */
@@ -230,8 +310,10 @@ export async function importData(data: BackupData): Promise<void> {
         await db.places.bulkAdd(data.places.map(withoutId));
       }
       // 旧バージョンのバックアップ(v3以前)には horses が無い。
+      // horses は sireId/damId で互いの id を参照しあうため、
+      // routes/places と違って id を振り直さず、そのまま復元する。
       if (Array.isArray(data.horses)) {
-        await db.horses.bulkAdd(data.horses.map(withoutId));
+        await db.horses.bulkPut(data.horses);
       }
       if (data.settings) {
         await db.settings.put({ ...data.settings, id: 'user' });

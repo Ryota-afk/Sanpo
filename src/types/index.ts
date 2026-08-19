@@ -207,6 +207,13 @@ export interface HorseCareerEntry {
 
 export type HorseStatus = 'active' | 'retired';
 
+/**
+ * 'bred' はプレイヤーが実際に育てた(散歩でキャリアを積んだ)馬。
+ * 'intro' は血統表の穴埋め用に自動生成された祖先で、キャリアを持たず、
+ * 配合相手としては選べない(血統表示にのみ使う)。
+ */
+export type HorseOrigin = 'bred' | 'intro';
+
 /** 愛馬(競走馬)。 */
 export interface Horse {
   id?: number;
@@ -230,4 +237,10 @@ export interface Horse {
   totalDistanceM: number;
   wins: number;
   careerLog: HorseCareerEntry[];
+  /** 省略時は 'bred' とみなす(フェーズ1で作られた既存データ向け)。 */
+  origin?: HorseOrigin;
+  sireId?: number;
+  damId?: number;
+  /** 3世代以内に共通の祖先を持つ配合で生まれたか。 */
+  inbredAtBirth?: boolean;
 }

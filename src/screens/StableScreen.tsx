@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, addHorse } from '../db/db';
-import { createHorse } from '../core/horse';
+import { db, addHorseWithPedigree, breedHorses } from '../db/db';
 import {
   CAREER_LENGTH_WALKS,
   distanceAptitudeMarks,
@@ -46,7 +45,14 @@ function CareerEntryRow({ entry }: { entry: HorseCareerEntry }) {
   );
 }
 
-function NamingForm({ onCreated }: { onCreated: () => void }) {
+function NamingForm({
+  onCreated,
+  collapsedByDefault = false,
+}: {
+  onCreated: () => void;
+  collapsedByDefault?: boolean;
+}) {
+  const [open, setOpen] = useState(!collapsedByDefault);
   const [name, setName] = useState('');
   const [sex, setSex] = useState<HorseSex>('male');
   const [error, setError] = useState<string | null>(null);
@@ -63,11 +69,19 @@ function NamingForm({ onCreated }: { onCreated: () => void }) {
       return;
     }
     setSaving(true);
-    await addHorse(createHorse(trimmed, sex));
+    await addHorseWithPedigree(trimmed, sex);
     setSaving(false);
     setName('');
     onCreated();
   };
+
+  if (!open) {
+    return (
+      <button className="btn btn--secondary" onClick={() => setOpen(true)}>
+        ＋ 外から新しい血統を迎える
+      </button>
+    );
+  }
 
   return (
     <div className="card">
@@ -76,6 +90,7 @@ function NamingForm({ onCreated }: { onCreated: () => void }) {
         名付けると、次の散歩から調教が始まります。全12回の散歩でキャリア(育成期
         →2歳→3歳→4歳・引退)が一周します。距離やペースは強さに、
         <b>散歩の回数</b>だけがキャリアの進み方に反映されます。
+        あわせて3世代分の祖先(血統表の元)も自動的に配られます。
       </p>
       <div className="field">
         <label htmlFor="horse-name">名前</label>
@@ -112,11 +127,193 @@ function NamingForm({ onCreated }: { onCreated: () => void }) {
       <button className="btn" disabled={saving} onClick={handleCreate}>
         {saving ? '登録中…' : '名付ける'}
       </button>
+      {collapsedByDefault && (
+        <button className="btn btn--secondary" onClick={() => setOpen(false)}>
+          やめる
+        </button>
+      )}
     </div>
   );
 }
 
-function ActiveHorseCard({ horse }: { horse: Horse }) {
+function BreedingForm({
+  stallions,
+  broodmares,
+  onCreated,
+}: {
+  stallions: Horse[];
+  broodmares: Horse[];
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [sireId, setSireId] = useState<number | null>(stallions[0]?.id ?? null);
+  const [damId, setDamId] = useState<number | null>(broodmares[0]?.id ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const handleBreed = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('名前を入力してください(カタカナ9文字以内)。');
+      return;
+    }
+    if (trimmed.length > 9) {
+      setError('名前は9文字以内にしてください。');
+      return;
+    }
+    if (sireId == null || damId == null) {
+      setError('父・母を選んでください。');
+      return;
+    }
+    setSaving(true);
+    await breedHorses(trimmed, sireId, damId);
+    setSaving(false);
+    setName('');
+    onCreated();
+  };
+
+  return (
+    <div className="card">
+      <h2>🐎 配合する</h2>
+      <p className="hint" style={{ marginTop: 0 }}>
+        牧場にいる引退馬同士を配合します。3世代以内に共通の祖先がいると能力の伸びしろが
+        出る代わり、気性が難しくなりやすくなります。
+      </p>
+      <div className="field">
+        <label>父(種牡馬)</label>
+        <div className="mood-grid">
+          {stallions.map((h) => (
+            <div
+              key={h.id}
+              className={`chip ${sireId === h.id ? 'selected' : ''}`}
+              onClick={() => setSireId(h.id ?? null)}
+              role="button"
+              tabIndex={0}
+            >
+              ♂ {h.name}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <label>母(繁殖牝馬)</label>
+        <div className="mood-grid">
+          {broodmares.map((h) => (
+            <div
+              key={h.id}
+              className={`chip ${damId === h.id ? 'selected' : ''}`}
+              onClick={() => setDamId(h.id ?? null)}
+              role="button"
+              tabIndex={0}
+            >
+              ♀ {h.name}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <label htmlFor="foal-name">産まれる仔の名前</label>
+        <input
+          id="foal-name"
+          type="text"
+          value={name}
+          placeholder="ニセイノキボウ"
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      {error && <div className="error">{error}</div>}
+      <button className="btn" disabled={saving} onClick={handleBreed}>
+        {saving ? '配合中…' : '仔を誕生させる'}
+      </button>
+    </div>
+  );
+}
+
+function PedigreeCell({
+  horse,
+  duplicated,
+}: {
+  horse?: Horse;
+  duplicated: boolean;
+}) {
+  if (!horse) {
+    return <div className="pedigree__cell pedigree__cell--empty" />;
+  }
+  const isIntro = (horse.origin ?? 'bred') === 'intro';
+  return (
+    <div className={`pedigree__cell ${isIntro ? 'pedigree__cell--intro' : ''}`}>
+      <span className="pedigree__name">
+        {horse.name} {horse.sex === 'male' ? '♂' : '♀'}
+      </span>
+      <span className="pedigree__meta">
+        {isIntro ? '導入' : `自家産・${horse.wins}勝`}
+        {duplicated && <span className="pedigree__dup">近親</span>}
+      </span>
+    </div>
+  );
+}
+
+/** 3世代血統表(父母・祖父母・曾祖父母)。血統情報が無ければ何も表示しない。 */
+function PedigreeTable({
+  horse,
+  byId,
+}: {
+  horse: Horse;
+  byId: Map<number, Horse>;
+}) {
+  const sire = horse.sireId != null ? byId.get(horse.sireId) : undefined;
+  const dam = horse.damId != null ? byId.get(horse.damId) : undefined;
+  if (!sire && !dam) return null;
+
+  const nextGen = (gen: (Horse | undefined)[]) =>
+    gen.flatMap((h) =>
+      h
+        ? [
+            h.sireId != null ? byId.get(h.sireId) : undefined,
+            h.damId != null ? byId.get(h.damId) : undefined,
+          ]
+        : [undefined, undefined],
+    );
+  const gen1 = [sire, dam];
+  const gen2 = nextGen(gen1);
+  const gen3 = nextGen(gen2);
+
+  const counts = new Map<number, number>();
+  for (const h of [...gen1, ...gen2, ...gen3]) {
+    if (h?.id != null) counts.set(h.id, (counts.get(h.id) ?? 0) + 1);
+  }
+  const isDup = (h?: Horse) => !!h?.id && (counts.get(h.id) ?? 0) > 1;
+
+  return (
+    <div className="pedigree-scroll">
+      <div className="pedigree">
+        <div className="pedigree__col">
+          {gen1.map((h, i) => (
+            <PedigreeCell key={i} horse={h} duplicated={isDup(h)} />
+          ))}
+        </div>
+        <div className="pedigree__col">
+          {gen2.map((h, i) => (
+            <PedigreeCell key={i} horse={h} duplicated={isDup(h)} />
+          ))}
+        </div>
+        <div className="pedigree__col">
+          {gen3.map((h, i) => (
+            <PedigreeCell key={i} horse={h} duplicated={isDup(h)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActiveHorseCard({
+  horse,
+  byId,
+}: {
+  horse: Horse;
+  byId: Map<number, Horse>;
+}) {
   const walkIndex = horse.ageWalks; // 直近まで進んだ回数
   const distMarks = distanceAptitudeMarks(horse);
   const surfMarks = surfaceAptitudeMarks(horse);
@@ -141,6 +338,12 @@ function ActiveHorseCard({ horse }: { horse: Horse }) {
           </div>
         </div>
       </div>
+
+      {horse.inbredAtBirth && (
+        <div className="notice" style={{ marginTop: 0 }}>
+          近親配合で生まれた一頭です。能力に伸びしろがある一方、気性は要注意かもしれません。
+        </div>
+      )}
 
       <div className="stat-row">
         <span className="stat">
@@ -176,6 +379,9 @@ function ActiveHorseCard({ horse }: { horse: Horse }) {
       <p className="hint">
         成長型は引退するまでわかりません。じっくり付き合ってみてください。
       </p>
+
+      <h3 style={{ fontSize: 14, margin: '16px 0 8px' }}>血統表</h3>
+      <PedigreeTable horse={horse} byId={byId} />
 
       {horse.careerLog.length > 0 && (
         <>
@@ -223,14 +429,36 @@ export function StableScreen() {
     return <div className="loading-overlay">読込中…</div>;
   }
 
+  const byId = new Map(
+    horses.filter((h) => h.id != null).map((h) => [h.id as number, h]),
+  );
   const active = horses.find((h) => h.status === 'active');
+  // 血統表の穴埋め用に自動生成された祖先(origin: 'intro')は、
+  // 牧場の記録にも配合相手にも出さない。
+  const isBred = (h: Horse) => (h.origin ?? 'bred') === 'bred';
   const retired = horses
-    .filter((h) => h.status === 'retired')
+    .filter((h) => h.status === 'retired' && isBred(h))
     .sort((a, b) => (a.birthAt < b.birthAt ? 1 : -1));
+  const stallions = retired.filter((h) => h.sex === 'male');
+  const broodmares = retired.filter((h) => h.sex === 'female');
+  const canBreed = stallions.length > 0 && broodmares.length > 0;
 
   return (
     <div>
-      {active ? <ActiveHorseCard horse={active} /> : <NamingForm onCreated={() => undefined} />}
+      {active ? (
+        <ActiveHorseCard horse={active} byId={byId} />
+      ) : (
+        <>
+          {canBreed && (
+            <BreedingForm
+              stallions={stallions}
+              broodmares={broodmares}
+              onCreated={() => undefined}
+            />
+          )}
+          <NamingForm onCreated={() => undefined} collapsedByDefault={canBreed} />
+        </>
+      )}
 
       {retired.length > 0 && (
         <div className="card">
