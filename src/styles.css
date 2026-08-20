@@ -760,7 +760,7 @@ input[type='range'] {
 
 .race-record {
   width: 100%;
-  min-width: 400px;
+  min-width: 480px;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -790,7 +790,8 @@ input[type='range'] {
 }
 
 .race-record__course,
-.race-record__field {
+.race-record__field,
+.race-record__weight {
   color: var(--muted);
 }
 

@@ -63,11 +63,20 @@ export function createFoal(
     runningStyle: inheritEnum(sire.runningStyle, dam.runningStyle, RUNNING_STYLES),
     growthType: inheritEnum(sire.growthType, dam.growthType, GROWTH_TYPES),
     params: foalParams(sire, dam, inbredMult),
+    baseWeightKg: inheritBaseWeight(sire, dam),
     origin: 'bred',
     sireId: sire.id,
     damId: dam.id,
     inbredAtBirth: inbred,
   };
+}
+
+// 父母の馬体重を平均し、多少のブレを加える。旧データ(baseWeightKg未設定)は標準値で代用する。
+function inheritBaseWeight(sire: Horse, dam: Horse): number {
+  const sireWeight = sire.baseWeightKg ?? 480;
+  const damWeight = dam.baseWeightKg ?? 456;
+  const avg = (sireWeight + damWeight) / 2;
+  return Math.round(avg + (Math.random() * 20 - 10));
 }
 
 const INTRO_NAMES = [

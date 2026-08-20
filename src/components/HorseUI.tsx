@@ -83,6 +83,14 @@ export function fatigueState(fatigue: number): { label: string; cls: string } {
 
 const SURFACE_LABELS: Record<'turf' | 'dirt', string> = { turf: '芝', dirt: 'ダート' };
 
+/** netkeiba表記("480(+4)"など)の馬体重セル文字列を作る。 */
+function formatWeight(weightKg?: number, deltaKg?: number): string {
+  if (weightKg == null) return '';
+  if (deltaKg == null) return `${weightKg}`;
+  const sign = deltaKg > 0 ? '+' : deltaKg < 0 ? '' : '±';
+  return `${weightKg}(${sign}${deltaKg})`;
+}
+
 /**
  * 引退後に見る戦績表。netkeiba の馬柱ページ(戦績一覧)を参考に、
  * このアプリが持っているデータ(回次・レース名・馬場距離・頭数・着順)で構成する。
@@ -104,6 +112,7 @@ export function RaceRecordTable({ careerLog }: { careerLog: HorseCareerEntry[] }
               <th>馬場・距離</th>
               <th>頭数</th>
               <th>着順</th>
+              <th>馬体重</th>
             </tr>
           </thead>
           <tbody>
@@ -122,6 +131,7 @@ export function RaceRecordTable({ careerLog }: { careerLog: HorseCareerEntry[] }
                   <td className={`race-record__placing ${tier ? `race-record__placing--${tier}` : ''}`}>
                     {e.placing}着
                   </td>
+                  <td className="race-record__weight">{formatWeight(e.weightKg, e.weightDeltaKg)}</td>
                 </tr>
               );
             })}

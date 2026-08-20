@@ -286,6 +286,10 @@ export interface HorseCareerEntry {
   fieldSize?: number;
   distanceM?: number;
   surface?: 'turf' | 'dirt';
+  /** レース当日の馬体重(kg)。netkeiba同様、レースの出来事にのみ付く。 */
+  weightKg?: number;
+  /** 前走からの馬体重増減(kg)。初戦はundefined。 */
+  weightDeltaKg?: number;
 }
 
 export type HorseStatus = 'active' | 'retired';
@@ -318,6 +322,8 @@ export interface Horse {
   turfExposureM: number;
   dirtExposureM: number;
   totalDistanceM: number;
+  /** 生まれつきの標準馬体重(kg)。レースごとの馬体重はここを基準に増減する。省略時(旧データ)はフォールバック値を使う。 */
+  baseWeightKg?: number;
   wins: number;
   careerLog: HorseCareerEntry[];
   /** 省略時は 'bred' とみなす(フェーズ1で作られた既存データ向け)。 */

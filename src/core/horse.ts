@@ -69,10 +69,17 @@ export function createHorse(name: string, sex: HorseSex): Horse {
     turfExposureM: 0,
     dirtExposureM: 0,
     totalDistanceM: 0,
+    baseWeightKg: rollBaseWeight(sex),
     wins: 0,
     careerLog: [],
     origin: 'bred',
   };
+}
+
+// 牡は460〜500kg、牝は440〜476kg程度を標準的な馬体重の目安にする。
+function rollBaseWeight(sex: HorseSex): number {
+  const [min, max] = sex === 'male' ? [460, 500] : [440, 476];
+  return Math.round(min + Math.random() * (max - min));
 }
 
 // ── ルートをチェックポイントに分割する ───────────────────
@@ -407,6 +414,9 @@ export function simulateLifetime(horse: Horse, route: RouteRecord): LifetimeResu
 
   let current = horse;
   let raceSlot = 0;
+  // 旧データ(baseWeightKg 導入前)は誕生時に決めていないので、ここでフォールバックする。
+  const baseWeight = horse.baseWeightKg ?? rollBaseWeight(horse.sex);
+  let prevWeight = baseWeight;
   const timeline: HorseCareerEntry[] = [];
 
   schedule.forEach((kind, i) => {
@@ -426,6 +436,15 @@ export function simulateLifetime(horse: Horse, route: RouteRecord): LifetimeResu
         fatigue: Math.min(100, current.fatigue + 3),
         wins: current.wins + (race.placing === 1 ? 1 : 0),
       };
+      // netkeiba同様、レースごとの馬体重は前走からの小さな増減で変動するが、
+      // 生まれつきの標準値(baseWeight)に向けて緩く戻る(実際の馬もキャリアを通じて
+      // 大幅に太る/痩せるわけではなく、標準値の近辺で上下する)。
+      const weightKg = Math.max(
+        380,
+        Math.round(prevWeight * 0.6 + baseWeight * 0.4 + (Math.random() * 16 - 8)),
+      );
+      const weightDeltaKg = weightKg - prevWeight;
+      prevWeight = weightKg;
       timeline.push({
         walkIndex,
         date: new Date().toISOString(),
@@ -436,6 +455,8 @@ export function simulateLifetime(horse: Horse, route: RouteRecord): LifetimeResu
         fieldSize: race.fieldSize,
         distanceM: race.distanceM,
         surface: race.surface,
+        weightKg,
+        weightDeltaKg,
       });
     } else {
       const stage = stageIndexForCheckpoint(walkIndex, schedule.length);
