@@ -418,6 +418,9 @@ export function simulateLifetime(horse: Horse, route: RouteRecord): LifetimeResu
   const baseWeight = horse.baseWeightKg ?? rollBaseWeight(horse.sex);
   let prevWeight = baseWeight;
   const timeline: HorseCareerEntry[] = [];
+  // オープン・重賞クラスは候補が複数あるティアがあるので、直近で使ったレース名を
+  // 渡して連続で同じレースを選ばないようにする(馬ごとにキャリアが分岐する)。
+  let recentRaceNames: string[] = [];
 
   schedule.forEach((kind, i) => {
     const walkIndex = i + 1;
@@ -427,7 +430,9 @@ export function simulateLifetime(horse: Horse, route: RouteRecord): LifetimeResu
         raceSlot,
         coursePlan,
         checkpoints[i].landmarks,
+        recentRaceNames,
       );
+      recentRaceNames = [...recentRaceNames, race.raceName].slice(-4);
       raceSlot += 1;
       current = {
         ...current,

@@ -19,111 +19,148 @@ interface RaceDef {
   distanceM: number;
 }
 
-interface CourseSpec {
-  surface: 'turf' | 'dirt';
+/** そのステージで走る1走を選ぶ候補群。複数あれば馬ごとにランダムに分岐する。 */
+interface RaceTier {
   races: RaceDef[];
 }
 
-// 実在のJRAレース名(+概ねの距離)を使う。番組の格付けが上がっていく順に並べてあり、
-// レース数がリストの長さを超えたら最後(その路線の頂点にあたるレース)を使い続ける
-// ―― 実際も、格上げされた古馬が同じ大レースを毎年走り続けるのに近い。
+interface CourseSpec {
+  surface: 'turf' | 'dirt';
+  tiers: RaceTier[];
+}
+
+// 実在のJRAレース名(+概ねの距離)だけを使う。新馬戦〜クラス条件は実際の番組編成に
+// 沿って1本道(全馬が通る)だが、オープン・重賞クラスに上がってからは複数の実在レースを
+// 「候補プール」として持たせ、馬ごとにどのレースを使うかランダムに分岐させる
+// (実際も、格上げされた馬がどの重賞を選ぶかは馬によって違う)。
+// レース数がティア数を超えたら最後のティア(プール)を使い続ける。
 // 重賞にはnetkeibaと同じ表記でグレード(GI/GII/GIII)を付す。
 const COURSE_SPECS: Record<CoursePlan, CourseSpec> = {
   turf: {
     surface: 'turf',
-    races: [
-      { name: '新馬戦', distanceM: 1600 },
-      { name: '未勝利戦', distanceM: 1800 },
-      { name: '1勝クラス', distanceM: 2000 },
-      { name: '中山金杯(GIII)', distanceM: 2000 },
-      { name: '2勝クラス', distanceM: 2000 },
-      { name: 'きさらぎ賞(GIII)', distanceM: 1800 },
-      { name: '3勝クラス', distanceM: 2200 },
-      { name: '中山記念(GII)', distanceM: 1800 },
-      { name: '京都記念(GII)', distanceM: 2200 },
-      { name: '日経賞(GII)', distanceM: 2200 },
-      { name: '目黒記念(GII)', distanceM: 2500 },
-      { name: '京都大賞典(GII)', distanceM: 2400 },
-      { name: '天皇賞(秋)(GI)', distanceM: 2000 },
-      { name: 'オールカマー(GII)', distanceM: 2200 },
-      { name: 'アルゼンチン共和国杯(GII)', distanceM: 2500 },
-      { name: 'ジャパンカップ(GI)', distanceM: 2400 },
-      { name: '有馬記念(GI)', distanceM: 2500 },
-      { name: '阪神大賞典(GII)', distanceM: 3000 },
-      { name: '大阪杯(GI)', distanceM: 2000 },
-      { name: '宝塚記念(GI)', distanceM: 2200 },
+    tiers: [
+      { races: [{ name: '新馬戦', distanceM: 1600 }] },
+      { races: [{ name: '未勝利戦', distanceM: 1800 }] },
+      { races: [{ name: '1勝クラス', distanceM: 2000 }] },
+      { races: [{ name: '2勝クラス', distanceM: 2000 }] },
+      { races: [{ name: '3勝クラス', distanceM: 2200 }] },
+      {
+        races: [
+          { name: '中山金杯(GIII)', distanceM: 2000 },
+          { name: 'きさらぎ賞(GIII)', distanceM: 1800 },
+          { name: '中山記念(GII)', distanceM: 1800 },
+          { name: '京都記念(GII)', distanceM: 2200 },
+          { name: '日経賞(GII)', distanceM: 2200 },
+          { name: '目黒記念(GII)', distanceM: 2500 },
+          { name: '京都大賞典(GII)', distanceM: 2400 },
+          { name: '天皇賞(秋)(GI)', distanceM: 2000 },
+          { name: 'オールカマー(GII)', distanceM: 2200 },
+          { name: 'アルゼンチン共和国杯(GII)', distanceM: 2500 },
+          { name: 'ジャパンカップ(GI)', distanceM: 2400 },
+          { name: '有馬記念(GI)', distanceM: 2500 },
+          { name: '阪神大賞典(GII)', distanceM: 3000 },
+          { name: '大阪杯(GI)', distanceM: 2000 },
+          { name: '宝塚記念(GI)', distanceM: 2200 },
+        ],
+      },
     ],
   },
   dirt: {
     surface: 'dirt',
-    races: [
-      { name: 'ダート新馬', distanceM: 1200 },
-      { name: 'ダート未勝利', distanceM: 1400 },
-      { name: '1勝クラス', distanceM: 1400 },
-      { name: 'ヒヤシンスステークス', distanceM: 1600 },
-      { name: '2勝クラス', distanceM: 1600 },
-      { name: 'プロキオンステークス(GIII)', distanceM: 1400 },
-      { name: 'エルムステークス(GIII)', distanceM: 1800 },
-      { name: '3勝クラス', distanceM: 1800 },
-      { name: 'みやこステークス(GIII)', distanceM: 1800 },
-      { name: '平安ステークス(GIII)', distanceM: 1800 },
-      { name: 'かしわ記念(GII)', distanceM: 1600 },
-      { name: 'JBCスプリント(GI)', distanceM: 1200 },
-      { name: 'フェブラリーステークス(GI)', distanceM: 1600 },
-      { name: 'チャンピオンズカップ(GI)', distanceM: 1800 },
-      { name: '帝王賞(GI)', distanceM: 2000 },
-      { name: 'JBCクラシック(GI)', distanceM: 2000 },
-      { name: '川崎記念(GI)', distanceM: 2100 },
-      { name: 'マイルチャンピオンシップ南部杯(GI)', distanceM: 1600 },
-      { name: '東京大賞典(GI)', distanceM: 2000 },
-      { name: 'ジャパンダートダービー(GI)', distanceM: 2000 },
+    tiers: [
+      { races: [{ name: 'ダート新馬', distanceM: 1200 }] },
+      { races: [{ name: 'ダート未勝利', distanceM: 1400 }] },
+      { races: [{ name: '1勝クラス', distanceM: 1400 }] },
+      { races: [{ name: '2勝クラス', distanceM: 1600 }] },
+      { races: [{ name: '3勝クラス', distanceM: 1800 }] },
+      {
+        races: [
+          { name: 'ヒヤシンスステークス', distanceM: 1600 },
+          { name: 'プロキオンステークス(GIII)', distanceM: 1400 },
+          { name: 'エルムステークス(GIII)', distanceM: 1800 },
+          { name: 'みやこステークス(GIII)', distanceM: 1800 },
+          { name: '平安ステークス(GIII)', distanceM: 1800 },
+          { name: 'かしわ記念(GII)', distanceM: 1600 },
+          { name: 'JBCスプリント(GI)', distanceM: 1200 },
+          { name: 'フェブラリーステークス(GI)', distanceM: 1600 },
+          { name: 'チャンピオンズカップ(GI)', distanceM: 1800 },
+          { name: '帝王賞(GI)', distanceM: 2000 },
+          { name: 'JBCクラシック(GI)', distanceM: 2000 },
+          { name: '川崎記念(GI)', distanceM: 2100 },
+          { name: 'マイルチャンピオンシップ南部杯(GI)', distanceM: 1600 },
+          { name: '東京大賞典(GI)', distanceM: 2000 },
+          { name: 'ジャパンダートダービー(GI)', distanceM: 2000 },
+        ],
+      },
     ],
   },
   sprint: {
     surface: 'turf',
-    races: [
-      { name: '新馬戦', distanceM: 1200 },
-      { name: '未勝利戦', distanceM: 1200 },
-      { name: '1勝クラス', distanceM: 1200 },
-      { name: '2勝クラス', distanceM: 1400 },
-      { name: 'オーシャンステークス(GIII)', distanceM: 1200 },
-      { name: 'シルクロードステークス(GIII)', distanceM: 1200 },
-      { name: '阪急杯(GIII)', distanceM: 1400 },
-      { name: '3勝クラス', distanceM: 1200 },
-      { name: '北九州記念(GIII)', distanceM: 1200 },
-      { name: 'CBC賞(GIII)', distanceM: 1200 },
-      { name: 'セントウルステークス(GII)', distanceM: 1200 },
-      { name: 'スプリンターズステークス(GI)', distanceM: 1200 },
-      { name: '高松宮記念(GI)', distanceM: 1200 },
-      { name: 'キーンランドカップ(GIII)', distanceM: 1200 },
-      { name: 'オパールステークス', distanceM: 1200 },
-      { name: 'パーシモンステークス', distanceM: 1200 },
+    tiers: [
+      { races: [{ name: '新馬戦', distanceM: 1200 }] },
+      { races: [{ name: '未勝利戦', distanceM: 1200 }] },
+      { races: [{ name: '1勝クラス', distanceM: 1200 }] },
+      { races: [{ name: '2勝クラス', distanceM: 1400 }] },
+      { races: [{ name: '3勝クラス', distanceM: 1200 }] },
+      {
+        races: [
+          { name: 'オーシャンステークス(GIII)', distanceM: 1200 },
+          { name: 'シルクロードステークス(GIII)', distanceM: 1200 },
+          { name: '阪急杯(GIII)', distanceM: 1400 },
+          { name: '北九州記念(GIII)', distanceM: 1200 },
+          { name: 'CBC賞(GIII)', distanceM: 1200 },
+          { name: 'セントウルステークス(GII)', distanceM: 1200 },
+          { name: 'スプリンターズステークス(GI)', distanceM: 1200 },
+          { name: '高松宮記念(GI)', distanceM: 1200 },
+          { name: 'キーンランドカップ(GIII)', distanceM: 1200 },
+          { name: 'オパールステークス', distanceM: 1200 },
+          { name: 'パーシモンステークス', distanceM: 1200 },
+        ],
+      },
     ],
   },
   classic: {
     surface: 'turf',
-    races: [
-      { name: '新馬戦', distanceM: 1800 },
-      { name: '未勝利戦', distanceM: 2000 },
-      { name: '1勝クラス', distanceM: 2000 },
-      { name: '共同通信杯(GIII)', distanceM: 1800 },
-      { name: '2勝クラス', distanceM: 2000 },
-      { name: '弥生賞(GII)', distanceM: 2000 },
-      { name: 'スプリングステークス(GII)', distanceM: 1800 },
-      { name: '皐月賞(GI)', distanceM: 2000 },
-      { name: 'NHKマイルカップ(GI)', distanceM: 1600 },
-      { name: '京都新聞杯(GII)', distanceM: 2200 },
-      { name: 'プリンシパルステークス(GIII)', distanceM: 2000 },
-      { name: '日本ダービー(GI)', distanceM: 2400 },
-      { name: 'セントライト記念(GII)', distanceM: 2200 },
-      { name: '神戸新聞杯(GII)', distanceM: 2400 },
-      { name: '菊花賞(GI)', distanceM: 3000 },
-      { name: '天皇賞(春)(GI)', distanceM: 3200 },
-      { name: '大阪杯(GI)', distanceM: 2000 },
-      { name: '宝塚記念(GI)', distanceM: 2200 },
-      { name: '天皇賞(秋)(GI)', distanceM: 2000 },
-      { name: 'ジャパンカップ(GI)', distanceM: 2400 },
-      { name: '有馬記念(GI)', distanceM: 2500 },
+    // 皐月賞→ダービー→菊花賞の三冠路線はこの順で固定(実際もこの順でしか走れない)。
+    // それ以外(トライアル・古馬になってからの大レース)は候補プールから分岐する。
+    tiers: [
+      { races: [{ name: '新馬戦', distanceM: 1800 }] },
+      { races: [{ name: '未勝利戦', distanceM: 2000 }] },
+      { races: [{ name: '1勝クラス', distanceM: 2000 }] },
+      { races: [{ name: '2勝クラス', distanceM: 2000 }] },
+      {
+        races: [
+          { name: '共同通信杯(GIII)', distanceM: 1800 },
+          { name: '弥生賞(GII)', distanceM: 2000 },
+          { name: 'スプリングステークス(GII)', distanceM: 1800 },
+        ],
+      },
+      { races: [{ name: '皐月賞(GI)', distanceM: 2000 }] },
+      {
+        races: [
+          { name: '京都新聞杯(GII)', distanceM: 2200 },
+          { name: 'プリンシパルステークス(GIII)', distanceM: 2000 },
+          { name: 'NHKマイルカップ(GI)', distanceM: 1600 },
+        ],
+      },
+      { races: [{ name: '日本ダービー(GI)', distanceM: 2400 }] },
+      {
+        races: [
+          { name: 'セントライト記念(GII)', distanceM: 2200 },
+          { name: '神戸新聞杯(GII)', distanceM: 2400 },
+        ],
+      },
+      { races: [{ name: '菊花賞(GI)', distanceM: 3000 }] },
+      {
+        races: [
+          { name: '天皇賞(春)(GI)', distanceM: 3200 },
+          { name: '大阪杯(GI)', distanceM: 2000 },
+          { name: '宝塚記念(GI)', distanceM: 2200 },
+          { name: '天皇賞(秋)(GI)', distanceM: 2000 },
+          { name: 'ジャパンカップ(GI)', distanceM: 2400 },
+          { name: '有馬記念(GI)', distanceM: 2500 },
+        ],
+      },
     ],
   },
 };
@@ -132,8 +169,18 @@ function courseSpecFor(coursePlan: CoursePlan): CourseSpec {
   return COURSE_SPECS[coursePlan];
 }
 
-function raceDefFor(spec: CourseSpec, slot: number): RaceDef {
-  return spec.races[Math.min(slot, spec.races.length - 1)];
+/**
+ * slot(0始まり)のティアから1走を選ぶ。候補が複数あるティアでは、
+ * 直近で使った実況済みのレース名をなるべく避けてランダムに選ぶ
+ * ―― 同じ路線でも馬ごとに違うレースを歩ませ、キャリアに多様性を出す。
+ */
+function pickRaceForSlot(spec: CourseSpec, slot: number, recentRaceNames: string[]): RaceDef {
+  const tier = spec.tiers[Math.min(slot, spec.tiers.length - 1)];
+  const pool = tier.races;
+  if (pool.length === 1) return pool[0];
+  const fresh = pool.filter((r) => !recentRaceNames.includes(r.name));
+  const candidates = fresh.length > 0 ? fresh : pool;
+  return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
 // レース距離に対して、stamina/speed 比がどれだけ噛み合っているか。
@@ -185,15 +232,20 @@ function buildCommentary(
   return `${prefix}${name}、今日は流れに乗れませんでした。${placing}着。次走に期待です。`;
 }
 
-/** slot(0始まり、レース中何走目か)のレースを発走する。landmarks は実況の演出のみに使う。 */
+/**
+ * slot(0始まり、レース中何走目か)のレースを発走する。landmarks は実況の演出のみに使う。
+ * recentRaceNames は直近で使ったレース名(候補が複数あるティアで、連続して
+ * 同じレースを選ばないようにするためのヒント)。
+ */
 export function simulateRace(
   horse: Horse,
   slot: number,
   coursePlan: CoursePlan,
   landmarks: RouteLandmarkKind[] = [],
+  recentRaceNames: string[] = [],
 ): RaceOutcome {
   const spec = courseSpecFor(coursePlan);
-  const { name: raceName, distanceM } = raceDefFor(spec, slot);
+  const { name: raceName, distanceM } = pickRaceForSlot(spec, slot, recentRaceNames);
 
   const distFit = fitForDistance(horse, distanceM);
   const surfFit = fitForSurface(horse, spec.surface);
