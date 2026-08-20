@@ -6,6 +6,7 @@ import { staminaSpeedRatio } from './career';
 export interface RaceOutcome {
   raceName: string;
   distanceM: number;
+  surface: 'turf' | 'dirt';
   placing: number;
   fieldSize: number;
   commentary: string;
@@ -13,73 +14,125 @@ export interface RaceOutcome {
 
 const FIELD_SIZE = 8;
 
+interface RaceDef {
+  name: string;
+  distanceM: number;
+}
+
 interface CourseSpec {
   surface: 'turf' | 'dirt';
-  names: string[];
-  distanceForSlot: (slot: number, total: number) => number;
+  races: RaceDef[];
 }
 
-function rampDistance(min: number, max: number, slot: number, total: number): number {
-  const frac = total <= 1 ? 0 : slot / (total - 1);
-  return Math.round((min + (max - min) * frac) / 100) * 100;
-}
-
+// 実在のJRAレース名(+概ねの距離)を使う。番組の格付けが上がっていく順に並べてあり、
+// レース数がリストの長さを超えたら最後(その路線の頂点にあたるレース)を使い続ける
+// ―― 実際も、格上げされた古馬が同じ大レースを毎年走り続けるのに近い。
 const COURSE_SPECS: Record<CoursePlan, CourseSpec> = {
-  sprint: {
-    surface: 'turf',
-    names: [
-      '新馬戦(短距離)',
-      '未勝利戦(短距離)',
-      'アイビースプリント',
-      '若葉スプリントT',
-      'シルクロードT',
-      '高松宮記念トライアル',
-      'スプリンターズS',
-      '当地スプリント王座決定戦',
-    ],
-    distanceForSlot: (slot, total) => rampDistance(1000, 1400, slot, total),
-  },
   turf: {
     surface: 'turf',
-    names: [
-      '新馬戦',
-      '未勝利戦',
-      'すみれ賞',
-      '若駒ステークス',
-      '毎日王冠トライアル',
-      '天皇賞トライアル',
-      '当地大賞典',
-      '古馬混合ステークス',
+    races: [
+      { name: '新馬戦', distanceM: 1600 },
+      { name: '未勝利戦', distanceM: 1800 },
+      { name: '1勝クラス', distanceM: 2000 },
+      { name: '中山金杯', distanceM: 2000 },
+      { name: '2勝クラス', distanceM: 2000 },
+      { name: 'きさらぎ賞', distanceM: 1800 },
+      { name: '3勝クラス', distanceM: 2200 },
+      { name: '中山記念', distanceM: 1800 },
+      { name: '京都記念', distanceM: 2200 },
+      { name: '日経賞', distanceM: 2200 },
+      { name: '目黒記念', distanceM: 2500 },
+      { name: '京都大賞典', distanceM: 2400 },
+      { name: '天皇賞(秋)', distanceM: 2000 },
+      { name: 'オールカマー', distanceM: 2200 },
+      { name: 'アルゼンチン共和国杯', distanceM: 2500 },
+      { name: 'ジャパンカップ', distanceM: 2400 },
+      { name: '有馬記念', distanceM: 2500 },
+      { name: '阪神大賞典', distanceM: 3000 },
+      { name: '大阪杯', distanceM: 2000 },
+      { name: '宝塚記念', distanceM: 2200 },
     ],
-    distanceForSlot: (slot, total) => rampDistance(1400, 2000, slot, total),
   },
   dirt: {
     surface: 'dirt',
-    names: [
-      'ダート新馬戦',
-      'ダート未勝利戦',
-      '平安ステークストライアル',
-      'ダート重賞シリーズ第1戦',
-      'ダート重賞シリーズ第2戦',
-      'JBCトライアル',
-      'チャンピオンズC路線',
-      '当地ダート王座決定戦',
+    races: [
+      { name: 'ダート新馬', distanceM: 1200 },
+      { name: 'ダート未勝利', distanceM: 1400 },
+      { name: '1勝クラス', distanceM: 1400 },
+      { name: 'ヒヤシンスステークス', distanceM: 1600 },
+      { name: '2勝クラス', distanceM: 1600 },
+      { name: 'プロキオンステークス', distanceM: 1400 },
+      { name: 'エルムステークス', distanceM: 1800 },
+      { name: '3勝クラス', distanceM: 1800 },
+      { name: 'みやこステークス', distanceM: 1800 },
+      { name: '平安ステークス', distanceM: 1800 },
+      { name: 'かしわ記念', distanceM: 1600 },
+      { name: 'JBCスプリント', distanceM: 1200 },
+      { name: 'フェブラリーステークス', distanceM: 1600 },
+      { name: 'チャンピオンズカップ', distanceM: 1800 },
+      { name: '帝王賞', distanceM: 2000 },
+      { name: 'JBCクラシック', distanceM: 2000 },
+      { name: '川崎記念', distanceM: 2100 },
+      { name: 'マイルチャンピオンシップ南部杯', distanceM: 1600 },
+      { name: '東京大賞典', distanceM: 2000 },
+      { name: 'ジャパンダートダービー', distanceM: 2000 },
     ],
-    distanceForSlot: (slot, total) => rampDistance(1200, 1800, slot, total),
+  },
+  sprint: {
+    surface: 'turf',
+    races: [
+      { name: '新馬戦', distanceM: 1200 },
+      { name: '未勝利戦', distanceM: 1200 },
+      { name: '1勝クラス', distanceM: 1200 },
+      { name: '2勝クラス', distanceM: 1400 },
+      { name: 'オーシャンステークス', distanceM: 1200 },
+      { name: 'シルクロードステークス', distanceM: 1200 },
+      { name: '阪急杯', distanceM: 1400 },
+      { name: '3勝クラス', distanceM: 1200 },
+      { name: '北九州記念', distanceM: 1200 },
+      { name: 'CBC賞', distanceM: 1200 },
+      { name: 'セントウルステークス', distanceM: 1200 },
+      { name: 'スプリンターズステークス', distanceM: 1200 },
+      { name: '高松宮記念', distanceM: 1200 },
+      { name: 'キーンランドカップ', distanceM: 1200 },
+      { name: 'オパールステークス', distanceM: 1200 },
+      { name: 'パーシモンステークス', distanceM: 1200 },
+    ],
   },
   classic: {
     surface: 'turf',
-    names: ['新馬戦', '未勝利戦', '共同通信杯', '皐月賞', '日本ダービー', '神戸新聞杯', '菊花賞', '古馬との対決戦'],
-    distanceForSlot: (slot) => {
-      // 皐月賞→ダービー→菊花賞を模した、距離が伸びていく王道路線。
-      const stops = [1600, 1800, 2000, 2000, 2400, 2400, 3000, 3000];
-      return stops[Math.min(slot, stops.length - 1)];
-    },
+    races: [
+      { name: '新馬戦', distanceM: 1800 },
+      { name: '未勝利戦', distanceM: 2000 },
+      { name: '1勝クラス', distanceM: 2000 },
+      { name: '共同通信杯', distanceM: 1800 },
+      { name: '2勝クラス', distanceM: 2000 },
+      { name: '弥生賞', distanceM: 2000 },
+      { name: 'スプリングステークス', distanceM: 1800 },
+      { name: '皐月賞', distanceM: 2000 },
+      { name: 'NHKマイルカップ', distanceM: 1600 },
+      { name: '京都新聞杯', distanceM: 2200 },
+      { name: 'プリンシパルステークス', distanceM: 2000 },
+      { name: '日本ダービー', distanceM: 2400 },
+      { name: 'セントライト記念', distanceM: 2200 },
+      { name: '神戸新聞杯', distanceM: 2400 },
+      { name: '菊花賞', distanceM: 3000 },
+      { name: '天皇賞(春)', distanceM: 3200 },
+      { name: '大阪杯', distanceM: 2000 },
+      { name: '宝塚記念', distanceM: 2200 },
+      { name: '天皇賞(秋)', distanceM: 2000 },
+      { name: 'ジャパンカップ', distanceM: 2400 },
+      { name: '有馬記念', distanceM: 2500 },
+    ],
   },
 };
 
 function courseSpecFor(coursePlan: CoursePlan): CourseSpec {
   return COURSE_SPECS[coursePlan];
+}
+
+function raceDefFor(spec: CourseSpec, slot: number): RaceDef {
+  return spec.races[Math.min(slot, spec.races.length - 1)];
 }
 
 // レース距離に対して、stamina/speed 比がどれだけ噛み合っているか。
@@ -135,13 +188,11 @@ function buildCommentary(
 export function simulateRace(
   horse: Horse,
   slot: number,
-  totalRaces: number,
   coursePlan: CoursePlan,
   landmarks: RouteLandmarkKind[] = [],
 ): RaceOutcome {
   const spec = courseSpecFor(coursePlan);
-  const distanceM = spec.distanceForSlot(slot, totalRaces);
-  const raceName = spec.names[Math.min(slot, spec.names.length - 1)];
+  const { name: raceName, distanceM } = raceDefFor(spec, slot);
 
   const distFit = fitForDistance(horse, distanceM);
   const surfFit = fitForSurface(horse, spec.surface);
@@ -153,8 +204,12 @@ export function simulateRace(
   const fatiguePenalty = horse.fatigue > 70 ? 0.85 : 1;
   const score = base * distFit * surfFit * fatiguePenalty * (0.85 + Math.random() * 0.3);
 
-  // 相手のレベルは回を追うごとに上がっていく。
-  const rivalMean = 8 + slot * 2.2;
+  // 相手のレベルはクラスが上がるにつれて上がるが、最大30戦を走り切れるよう
+  // オープン・重賞クラス相当で頭打ちにする(実際も、格上げされた古馬は
+  // 同格の相手と走り続ける)。頭打ち値は、標準的に育った馬の実力(base の
+  // 中央値、おおよそ13前後)と拮抗する水準に合わせてあり、平均的な馬でも
+  // 勝ち負けが五分五分に近くなるようにしている。
+  const rivalMean = 7 + Math.min(slot, 11) * 0.55;
   const rivals = Array.from({ length: FIELD_SIZE - 1 }, () =>
     rivalMean * (0.75 + Math.random() * 0.5),
   );
@@ -163,6 +218,7 @@ export function simulateRace(
   return {
     raceName,
     distanceM,
+    surface: spec.surface,
     placing,
     fieldSize: FIELD_SIZE,
     commentary: buildCommentary(horse.name, placing, FIELD_SIZE, landmarks[0]),

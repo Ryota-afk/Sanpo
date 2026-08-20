@@ -22,19 +22,20 @@ export function stageLabelForCheckpoint(idx: number, total: number): string {
 }
 
 // ── レース数(距離ベースの自動値 + 傾向による補正) ──────────
+//
+// 「多くて30戦、少なくて10戦」くらいの実際の競走馬キャリアに近い本数にする。
+// 距離は本数の"どのあたりか"だけを揺らし、傾向(少なめ/標準/多め)で
+// さらに調整する。
 
-export function minRaceCount(distanceM: number): number {
-  if (distanceM < 800) return 2;
-  if (distanceM < 1500) return 3;
-  if (distanceM < 2500) return 4;
-  return 5;
+export function minRaceCount(_distanceM: number): number {
+  return 10;
 }
 
 export function maxRaceCount(distanceM: number): number {
-  if (distanceM < 800) return 4;
-  if (distanceM < 1500) return 6;
-  if (distanceM < 2500) return 9;
-  return 12;
+  if (distanceM < 800) return 16;
+  if (distanceM < 1500) return 22;
+  if (distanceM < 2500) return 27;
+  return 30;
 }
 
 export function defaultRaceCount(distanceM: number): number {
@@ -42,9 +43,9 @@ export function defaultRaceCount(distanceM: number): number {
 }
 
 const PREFERENCE_OFFSET: Record<RaceCountPreference, number> = {
-  few: -2,
+  few: -5,
   normal: 0,
-  many: 2,
+  many: 5,
 };
 
 /** 距離と傾向(少なめ/標準/多め)から、実際に走らせるレース数を決める。 */
@@ -58,28 +59,15 @@ export function resolveRaceCount(
 
 /**
  * レース数から、調教とレースのスケジュールを組む。
- * 最初に育成期の調教ブロックを置き、以降はレースの合間に調教を散らして
- * 最後はレースで締める。
+ * 育成期(調教2回)のあとは、レース→調教→レース→調教…と1:1で交互に進み、
+ * 最後はレースで締める(引退はレースの直後)。
+ * 実際の競走馬も「レース→間隔を空けて調教→次走」を繰り返すので、その体感に寄せている。
  */
 export function buildLifeSchedule(raceCount: number): Array<'train' | 'race'> {
-  const trainCount = Math.max(2, Math.round(raceCount * 0.6));
-  const initialTrain = Math.max(1, Math.ceil(trainCount / 2));
-  const laterTrain = trainCount - initialTrain;
-
-  const schedule: Array<'train' | 'race'> = Array(initialTrain).fill('train');
-
-  const gap = laterTrain > 0 ? Math.max(2, Math.round(raceCount / (laterTrain + 1))) : Infinity;
-  let sinceTrain = 0;
-  let trainInserted = 0;
+  const schedule: Array<'train' | 'race'> = ['train', 'train'];
   for (let i = 0; i < raceCount; i++) {
-    const isLast = i === raceCount - 1;
-    if (!isLast && trainInserted < laterTrain && sinceTrain >= gap) {
-      schedule.push('train');
-      trainInserted++;
-      sinceTrain = 0;
-    }
     schedule.push('race');
-    sinceTrain++;
+    if (i < raceCount - 1) schedule.push('train'); // 次走までの間隔(最後のレースの後は無し)
   }
   return schedule;
 }

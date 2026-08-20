@@ -284,6 +284,8 @@ export interface HorseCareerEntry {
   raceName?: string;
   placing?: number;
   fieldSize?: number;
+  distanceM?: number;
+  surface?: 'turf' | 'dirt';
 }
 
 export type HorseStatus = 'active' | 'retired';

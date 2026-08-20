@@ -2,7 +2,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { LifetimeResult } from '../core/horse';
 import { distanceAptitudeMarks, surfaceAptitudeMarks } from '../core/career';
-import { CareerEntryRow, PedigreeTable, RankRow, fatigueState } from '../components/HorseUI';
+import {
+  CareerEntryRow,
+  PedigreeTable,
+  RaceRecordTable,
+  RankRow,
+  fatigueState,
+} from '../components/HorseUI';
 import {
   COAT_COLORS,
   COAT_LABELS,
@@ -105,6 +111,11 @@ export function LifetimeScreen({ result, onDone }: LifetimeScreenProps) {
 
         <h3 style={{ fontSize: 14, margin: '16px 0 8px' }}>血統表</h3>
         <PedigreeTable horse={horse} byId={byId} />
+      </div>
+
+      <div className="card">
+        <h2>戦績</h2>
+        <RaceRecordTable careerLog={horse.careerLog} />
       </div>
 
       <div className="card">

@@ -81,6 +81,60 @@ export function fatigueState(fatigue: number): { label: string; cls: string } {
   return { label: '良好', cls: 'good' };
 }
 
+const SURFACE_LABELS: Record<'turf' | 'dirt', string> = { turf: '芝', dirt: 'ダート' };
+
+/**
+ * 引退後に見る戦績表。netkeiba の馬柱ページ(戦績一覧)を参考に、
+ * このアプリが持っているデータ(回次・レース名・馬場距離・頭数・着順)で構成する。
+ */
+export function RaceRecordTable({ careerLog }: { careerLog: HorseCareerEntry[] }) {
+  const races = careerLog.filter((e) => e.kind === 'race' && e.raceName);
+  if (races.length === 0) return null;
+
+  const wins = races.filter((e) => e.placing === 1).length;
+
+  return (
+    <div>
+      <div className="race-record-scroll">
+        <table className="race-record">
+          <thead>
+            <tr>
+              <th>回次</th>
+              <th>レース名</th>
+              <th>馬場・距離</th>
+              <th>頭数</th>
+              <th>着順</th>
+            </tr>
+          </thead>
+          <tbody>
+            {races.map((e, i) => {
+              const tier =
+                e.placing === 1 ? 'win' : e.placing != null && e.placing <= 3 ? 'place' : '';
+              return (
+                <tr key={i}>
+                  <td className="race-record__idx">{i + 1}</td>
+                  <td className="race-record__name">{e.raceName}</td>
+                  <td className="race-record__course">
+                    {e.surface && SURFACE_LABELS[e.surface]}
+                    {e.distanceM}m
+                  </td>
+                  <td className="race-record__field">{e.fieldSize}頭</td>
+                  <td className={`race-record__placing ${tier ? `race-record__placing--${tier}` : ''}`}>
+                    {e.placing}着
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="hint">
+        {races.length}戦{wins}勝。
+      </p>
+    </div>
+  );
+}
+
 export function CareerEntryRow({ entry }: { entry: HorseCareerEntry }) {
   const icon = entry.kind === 'race' ? '🏁' : entry.kind === 'retire' ? '🎓' : '🏋️';
   return (

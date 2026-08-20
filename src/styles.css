@@ -586,16 +586,30 @@ input[type='range'] {
   line-height: 1.5;
 }
 
+.retired-list-item-wrap {
+  border-bottom: 1px solid var(--border);
+}
+
+.retired-list-item-wrap:last-child {
+  border-bottom: none;
+}
+
 .retired-list-item {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 0;
-  border-bottom: 1px solid var(--border);
+  cursor: pointer;
 }
 
-.retired-list-item:last-child {
-  border-bottom: none;
+.retired-list-item__chevron {
+  color: var(--muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.retired-list-item__detail {
+  padding: 0 0 14px;
 }
 
 .pedigree-scroll {
@@ -738,4 +752,56 @@ input[type='range'] {
 .rank-badge--G {
   background: #fed7d7;
   color: #9b2c2c;
+}
+
+.race-record-scroll {
+  overflow-x: auto;
+}
+
+.race-record {
+  width: 100%;
+  min-width: 400px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.race-record th,
+.race-record td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.race-record th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 2px solid var(--border);
+}
+
+.race-record__idx {
+  color: var(--muted);
+  width: 32px;
+}
+
+.race-record__name {
+  font-weight: 600;
+}
+
+.race-record__course,
+.race-record__field {
+  color: var(--muted);
+}
+
+.race-record__placing {
+  font-weight: 700;
+}
+
+.race-record__placing--win {
+  color: var(--danger);
+}
+
+.race-record__placing--place {
+  color: var(--green-dark);
 }

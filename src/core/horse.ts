@@ -157,7 +157,10 @@ const GROWTH_MULT: Record<GrowthType, number[]> = {
 // 「質」(道タイプ比率・気分)だけを反映し、量はこの固定値を基準にする。
 // これによりレース数(=チェックポイント数)を増減しても、生涯トータルの
 // 成長量が距離だけで理不尽に薄まらない。
-const CHECKPOINT_TRAINING_BUDGET_KM = 1.6;
+// レース数が10〜30戦(旧モデルの2〜12戦より多い)に増えたぶん、調教チェックポイントの
+// 総数も比例して増える。1回あたりの基準値はその分だけ小さくし、生涯トータルの
+// 成長量が水膨れしないようにする。
+const CHECKPOINT_TRAINING_BUDGET_KM = 0.6;
 
 interface TrainingEffect {
   deltas: HorseParams;
@@ -264,7 +267,10 @@ function computeTrainingEffect(checkpoint: CheckpointInput): TrainingEffect {
       (moods.has('quiet') || moods.has('residential') ? km * 0.35 : 0),
   };
 
-  let fatigueDelta = km * 4 + stepsRatio * 10;
+  // レースとレースの間の調教は、実際も全力の追い切りばかりではなく
+  // 軽めの調整が多い。ここを旧モデルの半分ほどに緩め、レースを重ねても
+  // (放牧・水辺のような回復ムードが無くても)緩やかに休養できるようにする。
+  let fatigueDelta = km * 2 + stepsRatio * 6;
   if (moods.has('green')) fatigueDelta -= km * 6; // 放牧: 正味回復になる
   if (moods.has('waterside')) fatigueDelta -= km * 3;
 
@@ -409,14 +415,15 @@ export function simulateLifetime(horse: Horse, route: RouteRecord): LifetimeResu
       const race = simulateRace(
         current,
         raceSlot,
-        raceCount,
         coursePlan,
         checkpoints[i].landmarks,
       );
       raceSlot += 1;
       current = {
         ...current,
-        fatigue: Math.min(100, current.fatigue + 6),
+        // レース数が最大30戦まで増えたぶん、1走あたりの疲労コストは
+        // 旧モデル(+6/最大12戦)より下げて、レース疲労の総量を揃える。
+        fatigue: Math.min(100, current.fatigue + 3),
         wins: current.wins + (race.placing === 1 ? 1 : 0),
       };
       timeline.push({
@@ -427,6 +434,8 @@ export function simulateLifetime(horse: Horse, route: RouteRecord): LifetimeResu
         raceName: race.raceName,
         placing: race.placing,
         fieldSize: race.fieldSize,
+        distanceM: race.distanceM,
+        surface: race.surface,
       });
     } else {
       const stage = stageIndexForCheckpoint(walkIndex, schedule.length);

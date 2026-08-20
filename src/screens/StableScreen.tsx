@@ -6,6 +6,7 @@ import {
   CoursePlanField,
   PedigreeTable,
   RaceCountField,
+  RaceRecordTable,
   RankBadge,
 } from '../components/HorseUI';
 import {
@@ -251,40 +252,63 @@ function PendingHorseCard({
   );
 }
 
-function RetiredHorseItem({ horse }: { horse: Horse }) {
+function RetiredHorseItem({
+  horse,
+  expanded,
+  onToggle,
+}: {
+  horse: Horse;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const distMarks = distanceAptitudeMarks(horse);
   const best = (Object.keys(distMarks) as DistanceAptitude[]).find(
     (k) => distMarks[k] === '◎',
   );
   return (
-    <div className="retired-list-item">
-      <span
-        className="coat-swatch"
-        style={{ background: COAT_COLORS[horse.coat], width: 22, height: 22 }}
-        title={COAT_LABELS[horse.coat]}
-      />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="horse-name" style={{ fontSize: 14 }}>
-          {horse.name} {horse.sex === 'male' ? '♂' : '♀'}
+    <div className="retired-list-item-wrap">
+      <div
+        className="retired-list-item"
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
+      >
+        <span
+          className="coat-swatch"
+          style={{ background: COAT_COLORS[horse.coat], width: 22, height: 22 }}
+          title={COAT_LABELS[horse.coat]}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="horse-name" style={{ fontSize: 14 }}>
+            {horse.name} {horse.sex === 'male' ? '♂' : '♀'}
+          </div>
+          <div className="horse-sub">
+            {COAT_LABELS[horse.coat]} ・ {GROWTH_TYPE_LABELS[horse.growthType]} ・{' '}
+            {horse.wins}勝 {best && `・ ${DISTANCE_APTITUDE_LABELS[best]}向き`}
+          </div>
+          <div className="rank-row rank-row--compact">
+            <RankBadge rank={paramRank(horse.params.speed)} />
+            <RankBadge rank={paramRank(horse.params.stamina)} />
+            <RankBadge rank={paramRank(horse.params.power)} />
+            <RankBadge rank={paramRank(horse.params.guts)} />
+            <RankBadge rank={paramRank(horse.params.wisdom)} />
+          </div>
         </div>
-        <div className="horse-sub">
-          {COAT_LABELS[horse.coat]} ・ {GROWTH_TYPE_LABELS[horse.growthType]} ・{' '}
-          {horse.wins}勝 {best && `・ ${DISTANCE_APTITUDE_LABELS[best]}向き`}
-        </div>
-        <div className="rank-row rank-row--compact">
-          <RankBadge rank={paramRank(horse.params.speed)} />
-          <RankBadge rank={paramRank(horse.params.stamina)} />
-          <RankBadge rank={paramRank(horse.params.power)} />
-          <RankBadge rank={paramRank(horse.params.guts)} />
-          <RankBadge rank={paramRank(horse.params.wisdom)} />
-        </div>
+        <span className="retired-list-item__chevron">{expanded ? '▲' : '▼'}</span>
       </div>
+      {expanded && (
+        <div className="retired-list-item__detail">
+          <h3 style={{ fontSize: 13, margin: '4px 0 8px' }}>戦績</h3>
+          <RaceRecordTable careerLog={horse.careerLog} />
+        </div>
+      )}
     </div>
   );
 }
 
 export function StableScreen() {
   const horses = useLiveQuery(() => db.horses.toArray(), []);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   if (horses == null) {
     return <div className="loading-overlay">読込中…</div>;
@@ -325,7 +349,12 @@ export function StableScreen() {
         <div className="card">
           <h2>牧場の記録(引退馬)</h2>
           {retired.map((h) => (
-            <RetiredHorseItem key={h.id} horse={h} />
+            <RetiredHorseItem
+              key={h.id}
+              horse={h}
+              expanded={expandedId === h.id}
+              onToggle={() => setExpandedId(expandedId === h.id ? null : (h.id ?? null))}
+            />
           ))}
         </div>
       )}
